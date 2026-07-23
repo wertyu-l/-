@@ -24,6 +24,7 @@ public class UserServiceImpl implements UserService {
     private UserMapper userMapper;
 
     /**
+     * 添加用户
      * @param user 用户对象
      */
     @Override

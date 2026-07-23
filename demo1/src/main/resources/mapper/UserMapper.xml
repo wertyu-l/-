@@ -16,24 +16,23 @@
         <result column="email" property="email"/>
         <result column="is_enabled" property="isEnabled"/>
         <result column="valid_until" property="validUntil"/>
-        <result column="login_status" property="loginStatus"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO user (username, password, role, user_type, user_level, department, position, phone, email, is_enabled, valid_until, login_status)
-        VALUES (#{username}, #{password}, #{role}, #{userType}, #{userLevel}, #{department}, #{position}, #{phone}, #{email}, #{isEnabled}, #{validUntil}, #{loginStatus})
+        INSERT INTO SYS_USER (username, password, role, user_type, user_level, department, position, phone, email, is_enabled, valid_until)
+        VALUES (#{username}, #{password}, #{role}, #{userType}, #{userLevel}, #{department}, #{position}, #{phone}, #{email}, #{isEnabled}, #{validUntil})
     </insert>
 
     <select id="findById" resultMap="BaseResultMap">
-        SELECT * FROM user WHERE id = #{id}
+        SELECT * FROM SYS_USER WHERE id = #{id}
     </select>
 
     <select id="findByUsername" resultMap="BaseResultMap">
-        SELECT * FROM user WHERE username = #{username}
+        SELECT * FROM SYS_USER WHERE username = #{username}
     </select>
 
     <update id="updateById">
-        UPDATE user
+        UPDATE SYS_USER
         SET username = #{username},
             password = #{password},
             role = #{role},
@@ -44,17 +43,16 @@
             phone = #{phone},
             email = #{email},
             is_enabled = #{isEnabled},
-            valid_until = #{validUntil},
-            login_status = #{loginStatus}
+            valid_until = #{validUntil}
         WHERE id = #{id}
     </update>
 
     <delete id="deleteByUsername">
-        DELETE FROM user WHERE username = #{username}
+        DELETE FROM SYS_USER WHERE username = #{username}
     </delete>
 
     <select id="pageQuery" resultMap="BaseResultMap">
-        SELECT * FROM user
+        SELECT * FROM SYS_USER
         <where>
             <if test="username != null and username != ''">
                 AND username LIKE CONCAT('%', #{username}, '%')
@@ -63,4 +61,4 @@
         ORDER BY id DESC
     </select>
 
-</mapper>
+    </mapper>

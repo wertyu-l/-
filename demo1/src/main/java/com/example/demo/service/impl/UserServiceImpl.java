@@ -56,7 +56,7 @@ public class UserServiceImpl implements UserService {
         if ("admin".equals(user.getRole())) {
             throw new RuntimeException("管理员用户不允许删除");
         }
-        if (user.getIsEnabled() != null && user.getIsEnabled()) {
+        if (user.getIsEnabled() != null && user.getIsEnabled() == 1) {
             throw new RuntimeException("启用的用户不能删除");
         }
         userMapper.deleteByUsername(username);
@@ -105,7 +105,7 @@ public class UserServiceImpl implements UserService {
         if (!password.equals(user.getPassword())) {
             throw new RuntimeException("用户名或密码错误");
         }
-        if (user.getIsEnabled() != null && !user.getIsEnabled()) {
+        if (user.getIsEnabled() != null && user.getIsEnabled() != 1) {
             throw new RuntimeException("用户已被禁用，请联系管理员");
         }
 

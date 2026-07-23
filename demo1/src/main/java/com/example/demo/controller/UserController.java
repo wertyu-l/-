@@ -68,9 +68,9 @@ public class UserController {
      * @param pageDTO 分页查询参数
      * @return
      */
-    @PostMapping("/page")
-    public Result<PageResult> getPage(@RequestBody PageDTO pageDTO) {
-         PageResult pageResult = userService.getPage(pageDTO);
+    @GetMapping("/page")
+    public Result<PageResult> getPage( PageDTO pageDTO) {
+        PageResult pageResult = userService.getPage(pageDTO);
         return Result.success(pageResult);
     }
     /**

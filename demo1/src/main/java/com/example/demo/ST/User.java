@@ -15,7 +15,6 @@ public class User {
     private String position;
     private String phone;
     private String email;
-    private Boolean isEnabled;
+    private Integer isEnabled;
     private LocalDateTime validUntil;
-    private String loginStatus;
 }

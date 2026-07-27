@@ -23,8 +23,12 @@ public class UserController {
      */
     @PostMapping
     public Result addUser(@RequestBody User user) {
-        userService.addUser(user);
-        return Result.success();
+        try {
+            userService.addUser(user);
+            return Result.success();
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
     }
 
     /**
@@ -33,7 +37,7 @@ public class UserController {
      * @return
      */
     @GetMapping("/{id}")
-    public Result getUserById(@PathVariable Long id) {
+    public Result<User> getUserById(@PathVariable Long id) {
         User user = userService.getUserById(id);
         return Result.success(user);
     }
@@ -61,6 +65,10 @@ public class UserController {
         } catch (RuntimeException e) {
             return Result.error(e.getMessage());
         }
+
+
+
+
     }
 
     /**
@@ -69,7 +77,7 @@ public class UserController {
      * @return
      */
     @GetMapping("/page")
-    public Result<PageResult> getPage( PageDTO pageDTO) {
+    public Result<PageResult> getPage(PageDTO pageDTO) {
         PageResult pageResult = userService.getPage(pageDTO);
         return Result.success(pageResult);
     }

@@ -10,7 +10,9 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -23,14 +25,23 @@ public class UserServiceImpl implements UserService {
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     /**
      * 添加用户
      * @param user 用户对象
      */
     @Override
     public void addUser(User user) {
+        User existing = userMapper.findByUsername(user.getUsername());
+        if (existing != null) {
+            throw new RuntimeException("用户名已存在");
+        }
         User a = new User();
         BeanUtils.copyProperties(user, a);
+        // BCrypt 加密密码
+        a.setPassword(passwordEncoder.encode(user.getPassword()));
         a.setValidUntil(LocalDateTime.now().plusMonths(6));
         userMapper.insert(a);
     }
@@ -40,8 +51,19 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public void update(User user) {
+        // 先查出原记录，防止密码被清空
+        User existing = userMapper.findById(user.getId());
+        if (existing == null) {
+            throw new RuntimeException("用户不存在");
+        }
         User a = new User();
         BeanUtils.copyProperties(user, a);
+        // 如果传入了新密码，则加密后存储；否则保留原密码
+        if (StringUtils.hasText(user.getPassword())) {
+            a.setPassword(passwordEncoder.encode(user.getPassword()));
+        } else {
+            a.setPassword(existing.getPassword());
+        }
         userMapper.updateById(a);
     }
     /**
@@ -70,8 +92,11 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public User getUserById(Long id) {
-        return userMapper.findById(id);
-
+        User user = userMapper.findById(id);
+        if (user != null) {
+            user.setPassword(null);
+        }
+        return user;
     }
 
     /**
@@ -83,12 +108,15 @@ public class UserServiceImpl implements UserService {
     public PageResult getPage(PageDTO pageDTO) {
         PageHelper.startPage(pageDTO.getPage(), pageDTO.getPageSize());
 
-
         Page<User> page = userMapper.pageQuery(pageDTO);
 
         long total = page.getTotal();
         List<User> records = page.getResult();
-        return  new PageResult(total,records);
+        // 不返回密码给调用方
+        if (records != null) {
+            records.forEach(user -> user.setPassword(null));
+        }
+        return new PageResult(total, records);
     }
 
     /**
@@ -103,7 +131,7 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new RuntimeException("用户名或密码错误");
         }
-        if (!password.equals(user.getPassword())) {
+        if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("用户名或密码错误");
         }
         if (user.getIsEnabled() != null && user.getIsEnabled() != 1) {

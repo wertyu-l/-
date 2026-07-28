@@ -65,9 +65,9 @@ demo1-common/                           ← 共享数据模型
 | y | int | 否  |  否   | 窗口左上角 Y 坐标，默认 0 |
 | width | int | 否  |  否   | 窗口宽度（像素），默认 1920 |
 | height | int | 否  |  否   | 窗口高度（像素），默认 1080 |
-| sourceType | String | 是  |  否   | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
-| sourceUrl | String | 是  |  否   | 信号源地址，如流媒体 URL |
-| createTime | String | 是  |  否   | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
+| sourceType | String | 否  |  否   | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
+| sourceUrl | String | 否  |  否   | 信号源地址，如流媒体 URL，默认 `""` |
+| createTime | String | 否  |  否   | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
 
 ### 3.4 SimDeviceCapability — 设备能力
 
@@ -608,7 +608,7 @@ Content-Type: application/json
 | deviceId | device-001 | device-002 |
 | online | true | true |
 | windowCount | 0 | 0 |
-| uptime | 0s（启动后计时） | 0s（启动后计时） |
+| uptime | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` |
 
 ### 6.3 设备能力（SimDeviceCapability）
 

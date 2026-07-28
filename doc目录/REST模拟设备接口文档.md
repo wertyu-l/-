@@ -57,17 +57,17 @@ demo1-common/                           ← 共享数据模型
 
 窗口是管控系统下发到模拟设备的内容展示单元，每个窗口绑定到设备的某个输出通道。
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|:--:|------|
-| windowId | String | 是  | 窗口唯一标识，由管控系统生成 |
-| channel | int | 是  | 绑定的输出通道编号，从 1 开始 |
-| x | int | 否  | 窗口左上角 X 坐标，默认 0 |
-| y | int | 否  | 窗口左上角 Y 坐标，默认 0 |
-| width | int | 否  | 窗口宽度（像素），默认 1920 |
-| height | int | 否  | 窗口高度（像素），默认 1080 |
-| sourceType | String | 是  | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
-| sourceUrl | String | 是  | 信号源地址，如流媒体 URL |
-| createTime | String | 是  | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
+| 字段 | 类型 | 必填 | 不可重复 | 说明 |
+|------|------|:--:|:----:|------|
+| windowId | String | 是  |  是   | 窗口唯一标识，由管控系统生成，全局唯一 |
+| channel | int | 是  |  是   | 绑定的输出通道编号，从 1 开始，同一设备下不可重复 |
+| x | int | 否  |  否   | 窗口左上角 X 坐标，默认 0 |
+| y | int | 否  |  否   | 窗口左上角 Y 坐标，默认 0 |
+| width | int | 否  |  否   | 窗口宽度（像素），默认 1920 |
+| height | int | 否  |  否   | 窗口高度（像素），默认 1080 |
+| sourceType | String | 是  |  否   | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
+| sourceUrl | String | 是  |  否   | 信号源地址，如流媒体 URL |
+| createTime | String | 是  |  否   | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
 
 ### 3.4 SimDeviceCapability — 设备能力
 

@@ -2,21 +2,23 @@
 
 ## 1. 概述
 
-REST 模拟设备是异构硬件设备管控系统中的**独立 Spring Boot 程序**，用于模拟分布式节点设备，通过 HTTP + JSON 提供设备信息和状态查询接口。
+REST 模拟设备是异构硬件设备管控系统中的**独立 Spring Boot 程序**，每个进程模拟**一台**分布式节点设备，通过 HTTP + JSON 提供设备信息和状态查询接口。
 
 模拟设备与管控系统分离部署，各自独立启动，通过 HTTP 通信，模拟真实分布式场景。
+
+**核心设计：一个端口 = 一台设备。** 如需模拟多台设备，启动多个进程并绑定不同端口即可。
 
 ## 2. 项目结构
 
 模拟设备是独立的 Spring Boot 程序，位于 `demo1-simulator` 模块，数据模型与管控系统共享 `demo1-common`。
 
 ```
-demo1-simulator/                        ← 模拟设备（端口 8086）
+demo1-simulator/                        ← 模拟设备（默认端口 8086，每进程一台设备）
 └── src/main/java/com/example/demo/simulator/
     ├── controller/
     │   └── SimDeviceController.java    ← REST 接口层
     ├── core/
-    │   └── SimDeviceManager.java       ← 设备管理核心（内存存储）
+    │   └── SimDeviceManager.java       ← 设备管理核心（内存存储，单设备）
     └── server/
         └── DiscoveryListener.java      ← UDP 设备发现监听
 
@@ -36,7 +38,6 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| deviceId | String | 设备唯一标识，如 `device-001` |
 | deviceName | String | 设备名称，如 `REST-Node-01` |
 | deviceType | String | 设备类型，当前为 `REST` |
 | model | String | 设备型号，如 `DS-D2055NH-A` |
@@ -48,9 +49,8 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 说明 |
 |------|------|----|
-| deviceId | String | 设备唯一标识 |
 | online | boolean | 是否在线，当前始终为 `true` |
-| windowCount | int | 窗口数|
+| windowCount | int | 窗口数 |
 | uptime | String | 设备启动时间，格式 `yyyy-MM-dd HH:mm:ss` |
 
 ### 3.3 SimWindow — 窗口信息
@@ -59,15 +59,15 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 必填 | 不可重复 | 说明 |
 |------|------|:--:|:----:|------|
-| windowId | String | 是  |  是   | 窗口唯一标识，由管控系统生成，全局唯一 |
-| channel | int | 是  |  是   | 绑定的输出通道编号，从 1 开始，同一设备下不可重复 |
-| x | int | 否  |  否   | 窗口左上角 X 坐标，默认 0 |
-| y | int | 否  |  否   | 窗口左上角 Y 坐标，默认 0 |
-| width | int | 否  |  否   | 窗口宽度（像素），默认 1920 |
-| height | int | 否  |  否   | 窗口高度（像素），默认 1080 |
-| sourceType | String | 否  |  否   | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
-| sourceUrl | String | 否  |  否   | 信号源地址，如流媒体 URL，默认 `""` |
-| createTime | String | 否  |  否   | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
+| windowId | String | 是 | 是 | 窗口唯一标识，由管控系统生成，全局唯一 |
+| channel | int | 是 | 是 | 绑定的输出通道编号，从 1 开始，同一设备下不可重复 |
+| x | int | 否 | 否 | 窗口左上角 X 坐标，默认 0 |
+| y | int | 否 | 否 | 窗口左上角 Y 坐标，默认 0 |
+| width | int | 否 | 否 | 窗口宽度（像素），默认 1920 |
+| height | int | 否 | 否 | 窗口高度（像素），默认 1080 |
+| sourceType | String | 否 | 否 | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
+| sourceUrl | String | 否 | 否 | 信号源地址，如流媒体 URL，默认 `""` |
+| createTime | String | 否 | 否 | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
 
 ### 3.4 SimDeviceCapability — 设备能力
 
@@ -75,7 +75,6 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| deviceId | String | 所属设备唯一标识 |
 | maxWindows | int | 最大窗口数量，超出后拒绝创建 |
 | supportMove | boolean | 是否支持窗口移动 |
 | supportResize | boolean | 是否支持窗口缩放 |
@@ -85,18 +84,18 @@ demo1-common/                           ← 共享数据模型
 
 ## 4. 接口列表
 
-模拟设备独立运行在端口 **8086**，基路径：`http://localhost:8086/simulator`
+模拟设备独立运行，默认端口 **8086**，基路径：`http://localhost:8086/simulator`。不同设备进程使用不同端口，接口路径结构完全一致，仅端口号不同。
 
 ### 4.1 获取设备信息
 
 ```
-GET /simulator/device/{deviceId}/info
+GET /simulator/device/info
 ```
 
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/device-001/info
+GET http://localhost:8086/simulator/device/info
 ```
 
 **成功响应：**
@@ -106,7 +105,6 @@ GET http://localhost:8086/simulator/device/device-001/info
   "code": 1,
   "msg": null,
   "data": {
-    "deviceId": "device-001",
     "deviceName": "REST-Node-01",
     "deviceType": "REST",
     "model": "DS-D2055NH-A",
@@ -117,26 +115,16 @@ GET http://localhost:8086/simulator/device/device-001/info
 }
 ```
 
-**失败响应（设备不存在）：**
-
-```json
-{
-  "code": 0,
-  "msg": "设备不存在: device-999",
-  "data": null
-}
-```
-
 ### 4.2 获取设备状态
 
 ```
-GET /simulator/device/{deviceId}/status
+GET /simulator/device/status
 ```
 
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/device-001/status
+GET http://localhost:8086/simulator/device/status
 ```
 
 **成功响应：**
@@ -146,21 +134,10 @@ GET http://localhost:8086/simulator/device/device-001/status
   "code": 1,
   "msg": null,
   "data": {
-    "deviceId": "device-001",
     "online": true,
     "windowCount": 0,
     "uptime": "2026-07-23 16:40:00"
   }
-}
-```
-
-**失败响应（设备不存在）：**
-
-```json
-{
-  "code": 0,
-  "msg": "设备不存在: device-999",
-  "data": null
 }
 ```
 
@@ -169,13 +146,13 @@ GET http://localhost:8086/simulator/device/device-001/status
 查询设备当前的能力限制，用于管控系统校验窗口操作是否合法。
 
 ```
-GET /simulator/device/{deviceId}/capability
+GET /simulator/device/capability
 ```
 
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/device-001/capability
+GET http://localhost:8086/simulator/device/capability
 ```
 
 **成功响应：**
@@ -185,11 +162,10 @@ GET http://localhost:8086/simulator/device/device-001/capability
   "code": 1,
   "msg": null,
   "data": {
-    "deviceId": "device-001",
     "maxWindows": 4,
     "supportMove": true,
     "supportResize": true,
-    "supportOverlay": false,
+    "supportOverlay": true,
     "maxResolution": "1920x1080",
     "outputChannels": 2
   }
@@ -201,7 +177,7 @@ GET http://localhost:8086/simulator/device/device-001/capability
 动态修改设备能力，用于模拟设备能力变化场景（如运行时热插拔、固件升级等）。
 
 ```
-PUT /simulator/device/{deviceId}/capability
+PUT /simulator/device/capability
 Content-Type: application/json
 ```
 
@@ -223,9 +199,8 @@ Content-Type: application/json
 ```json
 {
   "code": 1,
-  "msg": "能力已更新",
+  "msg": null,
   "data": {
-    "deviceId": "device-001",
     "maxWindows": 2,
     "supportMove": false,
     "supportResize": true,
@@ -238,10 +213,10 @@ Content-Type: application/json
 
 ### 4.5 创建窗口
 
-向设备下发创建窗口命令。创建前会校验：设备是否存在、窗口总数是否超过 `maxWindows` 限制。
+向设备下发创建窗口命令。创建前会校验：窗口总数是否超过 `maxWindows` 限制。
 
 ```
-POST /simulator/device/{deviceId}/window
+POST /simulator/device/window
 Content-Type: application/json
 ```
 
@@ -265,7 +240,7 @@ Content-Type: application/json
 ```json
 {
   "code": 1,
-  "msg": "窗口创建成功",
+  "msg": null,
   "data": {
     "windowId": "win-001",
     "channel": 1,
@@ -305,13 +280,13 @@ Content-Type: application/json
 关闭设备上指定 ID 的窗口，释放通道资源。
 
 ```
-DELETE /simulator/device/{deviceId}/window/{windowId}
+DELETE /simulator/device/window/{windowId}
 ```
 
 **请求示例：**
 
 ```
-DELETE http://localhost:8086/simulator/device/device-001/window/win-001
+DELETE http://localhost:8086/simulator/device/window/win-001
 ```
 
 **成功响应：**
@@ -319,7 +294,7 @@ DELETE http://localhost:8086/simulator/device/device-001/window/win-001
 ```json
 {
   "code": 1,
-  "msg": "窗口已关闭",
+  "msg": null,
   "data": null
 }
 ```
@@ -339,13 +314,13 @@ DELETE http://localhost:8086/simulator/device/device-001/window/win-001
 返回设备上当前所有窗口的列表，用于管控系统刷新页面后从模拟设备重新读取窗口状态。
 
 ```
-GET /simulator/device/{deviceId}/windows
+GET /simulator/device/windows
 ```
 
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/device-001/windows
+GET http://localhost:8086/simulator/device/windows
 ```
 
 **成功响应：**
@@ -386,13 +361,13 @@ GET http://localhost:8086/simulator/device/device-001/windows
 查询指定 ID 的窗口详细信息。
 
 ```
-GET /simulator/device/{deviceId}/window/{windowId}
+GET /simulator/device/window/{windowId}
 ```
 
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/device-001/window/win-001
+GET http://localhost:8086/simulator/device/window/win-001
 ```
 
 **成功响应：**
@@ -420,7 +395,7 @@ GET http://localhost:8086/simulator/device/device-001/window/win-001
 移动窗口位置或调整窗口大小。校验 `supportMove` 和 `supportResize` 能力限制。
 
 ```
-PUT /simulator/device/{deviceId}/window/{windowId}
+PUT /simulator/device/window/{windowId}
 Content-Type: application/json
 ```
 
@@ -460,7 +435,7 @@ Content-Type: application/json
 ```json
 {
   "code": 1,
-  "msg": "窗口已更新",
+  "msg": null,
   "data": {
     "windowId": "win-001",
     "channel": 1,
@@ -509,7 +484,7 @@ Content-Type: application/json
 
 ## 5. 设备发现协议（UDP）
 
-模拟设备除了提供 HTTP 接口外，还通过 UDP 协议支持设备自动发现。管控系统发送 UDP 广播搜索设备，模拟设备收到后回复自身信息。
+模拟设备除了提供 HTTP 接口外，还通过 UDP 协议支持设备自动发现。管控系统发送 UDP 广播搜索设备，每台模拟设备收到后回复自身信息。
 
 ### 5.1 协议参数
 
@@ -530,161 +505,130 @@ Content-Type: application/json
 
 ### 5.3 响应格式
 
-模拟设备收到广播后，单播回复：
+每台模拟设备收到广播后，单播回复自身地址：
 
 ```json
 {
-  "baseUrl": "http://192.168.1.100:8086",
-  "devices": [
-    {
-      "deviceId": "device-001",
-      "deviceName": "REST-Node-01",
-      "deviceType": "REST",
-      "model": "DS-D2055NH-A",
-      "outputChannels": 2,
-      "maxResolution": "1920x1080"
-    },
-    {
-      "deviceId": "device-002",
-      "deviceName": "REST-Node-02",
-      "deviceType": "REST",
-      "model": "DS-D2055NH-B",
-      "outputChannels": 2,
-      "maxResolution": "1920x1080"
-    }
-  ]
+  "baseUrl": "http://192.168.1.100:8086"
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| baseUrl | 模拟设备进程的 HTTP 地址，管控系统可直接用于后续 HTTP 请求 |
-| devices | 该进程内所有设备的基本信息列表 |
+| 字段 | 说明       |
+|------|----------|
+| baseUrl | 模拟设备进程的 HTTP 地址（含实际端口），管控系统可直接用于后续 HTTP 请求 |
+
+> 管控系统在 3 秒超时内会收到多台模拟设备的回复，每个回复代表一台独立设备（不同端口），汇总后展示给用户。管控系统拿到 `baseUrl` 后，走手动添加流程（`POST /device`），通过 HTTP 拉取设备详细信息。
 
 ### 5.4 交互时序
 
 ```
-管控系统 (UDP 客户端)              模拟设备 (UDP 监听 :9999)
-       │                                      │
-       │── UDP 广播 ──────────────────────→  │
-       │   {"action":"discovery"}             │
-       │                                      │── 解析请求
-       │                                      │── 从 SimDeviceManager 获取设备列表
-       │                                      │── 构造 JSON 回复
-       │←── UDP 单播回复 ──────────────────│
-       │   {"baseUrl":"...","devices":[...]}  │
-       │                                      │
-       │  3 秒超时，收集所有回复                │
+管控系统 (UDP 客户端)              模拟设备-A (:8086)        模拟设备-B (:8087)
+       │                                      │                      │
+       │── UDP 广播:255.255.255.255:9999 ──→  │                      │
+       │   {"action":"discovery"}             │                      │
+       │                                      │── 解析请求            │
+       │←── UDP 单播回复 ──────────────────│                      │
+       │   {"baseUrl":"http://...:8086"}      │                      │
+       │                                      │                      │── 解析请求
+       │←── UDP 单播回复 ───────────────────────────────────────│
+       │   {"baseUrl":"http://...:8087"}      │                      │
+       │                                      │                      │
+       │  3 秒超时，收集所有回复，汇总返回给前端                          │
 ```
 
 ### 5.5 实现说明
 
-`DiscoveryListener` 在模拟设备启动时通过 `@PostConstruct` 自动开启守护线程，监听 UDP 9999 端口。收到 `{"action":"discovery"}` 时，从 `SimDeviceManager` 获取所有设备信息，构造 JSON 回复并原路返回。
+`DiscoveryListener` 在模拟设备启动时通过 `@PostConstruct` 自动开启守护线程，监听 UDP 9999 端口。收到 `{"action":"discovery"}` 时，构造仅含 `baseUrl` 的 JSON 回复并原路返回。
 
 纯 JDK 实现，无需引入额外依赖（`java.net.DatagramSocket` + `DatagramPacket`）。
 
 ---
 
-## 6. 默认设备列表
+## 6. 默认设备
 
-模拟设备进程启动后，自动暴露 2 台模拟硬件资源。每台设备代表一个独立的分布式节点，管控系统启动后即可直接查询，无需手动"创建"设备。
+模拟设备进程启动后，自动初始化 **1 台**默认设备。管控系统启动后即可直接查询，无需手动创建。
 
 ### 6.1 设备信息（SimDeviceInfo）
 
-| 字段 | device-001 | device-002 |
-|------|-----------|-----------|
-| deviceId | device-001 | device-002 |
-| deviceName | REST-Node-01 | REST-Node-02 |
-| deviceType | REST | REST |
-| model | DS-D2055NH-A | DS-D2055NH-B |
-| serialNumber | SN-REST-2024-0001 | SN-REST-2024-0002 |
-| outputChannels | 2 | 2 |
-| maxResolution | 1920x1080 | 1920x1080 |
+| 字段 | 值 |
+|------|-----|
+| deviceName | REST-Node-01 |
+| deviceType | REST |
+| model | DS-D2055NH-A |
+| serialNumber | SN-REST-2024-0001 |
+| outputChannels | 2 |
+| maxResolution | 1920x1080 |
 
 ### 6.2 设备状态（SimDeviceStatus）
 
-| 字段 | device-001 | device-002 |
-|------|-----------|-----------|
-| deviceId | device-001 | device-002 |
-| online | true | true |
-| windowCount | 0 | 0 |
-| uptime | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` |
+| 字段 | 值 |
+|------|-----|
+| online | true |
+| windowCount | 0 |
+| uptime | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` |
 
 ### 6.3 设备能力（SimDeviceCapability）
 
-| 字段 | device-001 | device-002 |
-|------|-----------|-----------|
-| deviceId | device-001 | device-002 |
-| maxWindows | 4 | 4 |
-| supportMove | true | true |
-| supportResize | true | true |
-| supportOverlay | true | true |
-| maxResolution | 1920x1080 | 1920x1080 |
-| outputChannels | 2 | 2 |
+| 字段 | 值 |
+|------|-----|
+| maxWindows | 4 |
+| supportMove | true |
+| supportResize | true |
+| supportOverlay | true |
+| maxResolution | 1920x1080 |
+| outputChannels | 2 |
 
-> 默认设备启动时窗口为空（`windowCount=0`），窗口由管控系统通过 `POST /window` 创建后动态管理。
+> 默认设备启动时窗口为空（`windowCount=0`），窗口由管控系统通过 `POST /simulator/device/window` 创建后动态管理。
+
+---
 
 ## 7. 设计说明
 
 ### 7.1 存储方式
 
-设备数据全部存储在内存中（`LinkedHashMap`）。模拟设备进程重启后，内存清空并重新初始化 2 台默认硬件资源，能力恢复为默认值，窗口清空。
+设备数据全部存储在内存中，进程重启后清空并重新初始化默认设备，能力恢复为默认值，窗口清空。
 
-> **窗口恢复：** 模拟设备自身不持久化窗口数据，但管控系统（demo1-server）将窗口状态保存在数据库中。管控系统重启后可从数据库读取窗口列表，逐个调用 `POST /window` 重新下发到模拟设备，恢复窗口状态。
-
-存储结构如下：
-
-- **设备信息**：`Map<String, SimDeviceInfo>`，key 为 deviceId
-- **设备能力**：`Map<String, SimDeviceCapability>`，key 为 deviceId，每台设备初始化时附带默认能力
-- **窗口集合**：`Map<String, SimWindow>`，key 为 windowId，存储在对应设备名下
-
-窗口与设备的关系：每个窗口属于一台设备，窗口的 `windowId` 为全局唯一标识。创建窗口时校验能力限制，关闭窗口时从集合中移除。
+> **窗口恢复：** 模拟设备自身不持久化窗口数据，但管控系统（demo1-server）将窗口状态保存在数据库中。管控系统重启后可从数据库读取窗口列表，逐个调用 `POST /simulator/device/window` 重新下发到模拟设备，恢复窗口状态。
 
 ### 7.2 与管控系统的关系
 
 模拟设备与管控系统是**两个独立进程**，各自启动：
 
-| 模块 | 端口 | 启动方式 |
-|------|------|----------|
-| demo1-server（管控系统） | 8085 | `mvn spring-boot:run` |
-| demo1-simulator（模拟设备） | 8086 | `mvn spring-boot:run` |
+| 模块 | 端口 | 说明 |
+|------|------|------|
+| demo1-server（管控系统） | 8085 | 通过 `mvn spring-boot:run` 启动 |
+| demo1-simulator（模拟设备） | 8086（可自定义） | 每台设备一个进程，端口不同 |
 
 管控系统通过 HTTP 请求调用本接口文档中的 API，模拟设备离线时 HTTP 请求失败，管控系统即可检测到设备下线。
 
 管控系统内部通过 `DeviceDriver` 接口封装 HTTP 调用，`RestDeviceDriver` 为 REST 设备的实现，具体看设备管理模块设计文档。
 
-**设备唯一标识：** 管控系统通过 `baseUrl + deviceId` 组合来定位一台设备。`baseUrl` 指向模拟设备进程地址（如 `http://localhost:8086`），`deviceId` 区分该进程内的具体设备。同一进程内 `deviceId` 唯一，不会重复。
+**设备定位：** 管控系统通过 `baseUrl` 来定位一台设备。`baseUrl` 指向模拟设备进程地址（如 `http://localhost:8086`），每个进程只有一台设备，`baseUrl` 即设备唯一标识。
 
-### 7.3 多实例模拟
+### 7.3 多设备模拟
 
-每个模拟设备进程默认暴露 2 台硬件资源。单个进程的设备数量固定，增加设备数量有两种方式：
-
-1. **启动多个进程**（不同端口）
+**一个进程 = 一台设备**，如需模拟多台设备，启动多个进程并绑定不同端口：
 
 ```bash
-# 进程1：端口 8086，暴露 2 台设备
+# 设备1：端口 8086
 java -jar demo1-simulator.jar --server.port=8086
 
-# 进程2：端口 8087，暴露 2 台设备
+# 设备2：端口 8087
 java -jar demo1-simulator.jar --server.port=8087
+
+# 设备3：端口 8088
+java -jar demo1-simulator.jar --server.port=8088
 ```
 
-此时管控系统可分别向 `8086` 和 `8087` 添加设备，总共管理 4 台。
+管控系统分别向 `http://localhost:8086`、`http://localhost:8087`、`http://localhost:8088` 添加设备，每个地址对应一台独立设备。
 
-2. **配置单进程设备数量**（推荐）
+| 端口 | 说明 |
+|------|------|
+| 8086 | 进程 1，独立设备 |
+| 8087 | 进程 2，独立设备 |
+| 8088 | 进程 3，独立设备 |
 
-```properties
-# application.properties
-simulator.device-count=4
-```
-
-一个进程即可暴露 4 台设备，端口固定，管控系统只需向一个地址添加即可。
-
-| 方式 | 进程数 | 端口数 | 总设备数 |
-|------|-------|-------|---------|
-| 默认 | 1 | 1 | 2 |
-| 多进程 | 2 | 2 | 4 |
-| 配置数量 | 1 | 1 | 4 |
+> 每个进程内的设备信息完全独立，管控系统通过 `baseUrl` 区分不同设备。
 
 ### 7.4 统一返回格式
 
@@ -692,116 +636,14 @@ simulator.device-count=4
 
 ```json
 {
-  "code": 1,     // 1=成功，0=失败
-  "msg": null,   // 失败时包含错误信息
-  "data": {}     // 业务数据
+  "code": 1,
+  "msg": null,
+  "data": {}
 }
 ```
 
-### 7.5 窗口管理流程
-
-窗口操作由调用方（管控系统）通过 HTTP 请求触发，模拟设备被动响应。以创建窗口为例：
-
-```text
-调用方                             模拟设备
-  │                                  │
-  │── POST /device/{id}/window ──→  │── 校验设备是否存在
-  │                                  │── 校验窗口 ID 是否重复
-  │                                  │── 校验是否超过 maxWindows
-  │                                  │── 存入窗口 Map
-  │←── 200 OK ────────────────────  │
-```
-
-状态回读（调用方刷新/恢复状态时）：
-
-```text
-调用方                             模拟设备
-  │                                  │
-  │── GET /device/{id}/status ──→   │── 返回实时 windowCount
-  │── GET /device/{id}/windows ─→   │── 返回窗口完整列表
-  │                                  │
-  │  调用方根据返回数据重建前端状态    │
-```
-
-> 调用方（管控系统）通过 `DeviceDriver` 接口封装 HTTP 调用，见设备管理模块设计文档。
-
-### 7.6 接口汇总
-
-**HTTP 接口：**
-
-| 方法 | 路径 | 说明 |
+| 字段 | 类型 | 说明 |
 |------|------|------|
-| GET | `/simulator/device/{deviceId}/info` | 获取设备信息 |
-| GET | `/simulator/device/{deviceId}/status` | 获取设备状态（含实时 windowCount） |
-| GET | `/simulator/device/{deviceId}/capability` | 获取设备能力 |
-| PUT | `/simulator/device/{deviceId}/capability` | 更新设备能力（模拟能力变化） |
-| POST | `/simulator/device/{deviceId}/window` | 创建窗口 |
-| PUT | `/simulator/device/{deviceId}/window/{windowId}` | 更新窗口位置/大小 |
-| DELETE | `/simulator/device/{deviceId}/window/{windowId}` | 关闭窗口 |
-| GET | `/simulator/device/{deviceId}/windows` | 查询窗口列表（状态回读） |
-| GET | `/simulator/device/{deviceId}/window/{windowId}` | 查询单个窗口 |
-
-**UDP 发现协议：**
-
-| 协议 | 端口 | 方向 | 说明 |
-|------|------|------|------|
-| UDP | 9999 | 广播接收 | 收到 `{"action":"discovery"}` 后回复设备列表 |
-
-### 7.7 错误码
-
-所有接口统一使用 `Result<T>` 封装，`code` 字段标识成功/失败：
-
-| code | 说明 |
-|------|------|
-| 1 | 成功 |
-
-失败时 `code` 统一为 `0`，具体错误由 `msg` 字段描述：
-
-| 错误场景 | 触发接口 | msg 示例 |
-|---------|---------|---------|
-| 设备不存在 | GET info/status/capability/windows、POST window、PUT capability | `"设备不存在: device-999"` |
-| 窗口不存在 | GET/DELETE/PUT window/{id} | `"窗口不存在: win-999"` |
-| 窗口 ID 重复 | POST window | `"窗口已存在: win-001"` |
-| 超过最大窗口数 | POST window | `"窗口数量已达上限: 4"` |
-| 不支持窗口移动 | PUT window/{id} | `"设备不支持窗口移动"` |
-| 不支持窗口缩放 | PUT window/{id} | `"设备不支持窗口缩放"` |
-| 参数校验失败 | POST window | `"windowId 不能为空"` |
-
-### 7.8 设备状态生命周期
-
-模拟设备的数据全部在内存中，其生命周期与进程绑定。
-
-**进程级生命周期：**
-
-```text
-进程启动
-  │
-  ├── SimDeviceManager 初始化
-  │     ├── 创建默认设备（device-001, device-002）
-  │     └── 初始化能力（maxWindows=4, ...）
-  │
-  └── 进入就绪状态，等待 HTTP 请求
-        │
-        ├── 接受窗口 CRUD 操作
-        │     ├── 创建窗口 → windowCount++
-        │     └── 关闭窗口 → windowCount--
-        │
-        ├── 接受能力变更（PUT capability）
-        │     └── 运行时调整 maxWindows 等限制
-        │
-        └── 进程关闭 → 内存清空，所有数据丢失
-```
-
-**能力变更对窗口的影响：**
-
-| 能力变更 | 对已有窗口的影响 |
-|---------|----------------|
-| 降低 maxWindows | 已有窗口不受影响，但新创建会被拒绝（若当前窗口数 ≥ 新上限） |
-| 关闭 supportMove | 仅影响后续行为，模拟设备当前不强制校验 |
-| 关闭 supportResize | 同上 |
-
-**关键特性：**
-
-- 设备**不存在**"创建"或"删除"操作——由进程启动/关闭自然决定
-- 设备状态 `online` 始终为 `true`（进程存在即可达），离线由调用方 HTTP 超时判断
-- 窗口数据为**唯一致信源**——调用方刷新页面时从模拟设备回读，而非依赖本地缓存
+| code | int | `1`=成功，`0`=失败 |
+| msg | String | 失败时包含错误信息，成功时为 `null` |
+| data | T | 业务数据，类型视接口而定 |

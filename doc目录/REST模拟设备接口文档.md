@@ -18,9 +18,14 @@ demo1-simulator/                        ← 模拟设备（默认端口 8086，�
     ├── controller/
     │   └── SimDeviceController.java    ← REST 接口层
     ├── core/
-    │   └── SimDeviceManager.java       ← 设备管理核心（内存存储，单设备）
+    │   ├── SimDeviceManager.java       ← 设备管理核心（数据从 DB 加载）
+    │   └── DeviceRepository.java       ← 数据访问层（JdbcTemplate）
     └── server/
         └── DiscoveryListener.java      ← UDP 设备发现监听
+    ├── main/resources/
+    │   ├── application.yaml            ← 含 H2 数据源配置
+    │   ├── schema.sql                  ← 建表脚本（自启动执行）
+    │   └── data.sql                    ← 初始数据（仅首次导入）
 
 demo1-common/                           ← 共享数据模型
 └── src/main/java/com/example/demo/model/
@@ -255,12 +260,22 @@ Content-Type: application/json
 }
 ```
 
-**失败响应（超过最大窗口数）：**
+**失败响应（窗口 ID 为空）：**
 
 ```json
 {
   "code": 0,
-  "msg": "窗口数量已达上限: 4",
+  "msg": "窗口ID不能为空",
+  "data": null
+}
+```
+
+**失败响应（通道编号无效）：**
+
+```json
+{
+  "code": 0,
+  "msg": "通道编号必须大于0",
   "data": null
 }
 ```
@@ -271,6 +286,26 @@ Content-Type: application/json
 {
   "code": 0,
   "msg": "窗口已存在: win-001",
+  "data": null
+}
+```
+
+**失败响应（通道已被占用）：**
+
+```json
+{
+  "code": 0,
+  "msg": "通道已被占用: 1",
+  "data": null
+}
+```
+
+**失败响应（超过最大窗口数）：**
+
+```json
+{
+  "code": 0,
+  "msg": "窗口数量已达上限: 4",
   "data": null
 }
 ```
@@ -387,6 +422,16 @@ GET http://localhost:8086/simulator/device/window/win-001
     "sourceUrl": "rtsp://example.com/stream1",
     "createTime": "2026-07-28 14:30:00"
   }
+}
+```
+
+**失败响应（窗口不存在）：**
+
+```json
+{
+  "code": 0,
+  "msg": "窗口不存在: win-999",
+  "data": null
 }
 ```
 
@@ -578,7 +623,6 @@ Content-Type: application/json
 | maxResolution | 1920x1080 |
 | outputChannels | 2 |
 
-> 默认设备启动时窗口为空（`windowCount=0`），窗口由管控系统通过 `POST /simulator/device/window` 创建后动态管理。
 
 ---
 
@@ -586,11 +630,64 @@ Content-Type: application/json
 
 ### 7.1 存储方式
 
-设备数据全部存储在内存中，进程重启后清空并重新初始化默认设备，能力恢复为默认值，窗口清空。
+设备数据使用 **H2 文件数据库** 持久化存储，进程重启后数据保留，窗口自动恢复。
 
-> **窗口恢复：** 模拟设备自身不持久化窗口数据，但管控系统（demo1-server）将窗口状态保存在数据库中。管控系统重启后可从数据库读取窗口列表，逐个调用 `POST /simulator/device/window` 重新下发到模拟设备，恢复窗口状态。
+| 数据类型 | 存储方式 | 说明 |
+|------|------|------|
+| 设备基本信息 | H2 数据库 `DEVICE_INFO` 表 | 仅一条记录，首次启动自动导入 |
+| 设备能力 | H2 数据库 `DEVICE_CAPABILITY` 表 | 仅一条记录，运行时修改会持久化 |
+| 窗口数据 | H2 数据库 `DEVICE_WINDOW` 表 | 创建/更新/删除即时写入 DB |
 
-### 7.2 与管控系统的关系
+**数据库文件：** 每台模拟设备使用独立的 H2 文件数据库，路径为 `./data/` 目录下以模块名命名的文件。
+
+| 模拟设备 | 数据库文件 |
+|------|------|
+| demo1-simulator（端口 8086） | `./data/simulator1.mv.db` |
+| demo1-simulator2（端口 8087） | `./data/simulator2.mv.db` |
+
+**自启动初始化：** `application.yaml` 中配置 `spring.sql.init.mode: always`，启动时自动执行 `schema.sql`（`CREATE TABLE IF NOT EXISTS`）和 `data.sql`（`INSERT ... WHERE NOT EXISTS` 仅首次插入）。
+
+### 7.2 数据库表结构
+
+**DEVICE_INFO（设备信息表）**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键，自增 |
+| device_name | VARCHAR(200) | 设备名称，如 `REST-Node-01` |
+| device_type | VARCHAR(50) | 设备类型，默认 `REST` |
+| model | VARCHAR(100) | 设备型号 |
+| serial_number | VARCHAR(100) | 序列号 |
+| output_channels | INT | 输出通道数 |
+| max_resolution | VARCHAR(50) | 最大分辨率 |
+
+**DEVICE_CAPABILITY（设备能力表）**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键，自增 |
+| max_windows | INT | 最大窗口数量 |
+| support_move | BOOLEAN | 是否支持窗口移动 |
+| support_resize | BOOLEAN | 是否支持窗口缩放 |
+| support_overlay | BOOLEAN | 是否支持窗口叠加 |
+| max_resolution | VARCHAR(50) | 最大分辨率 |
+| output_channels | INT | 输出通道数 |
+
+**DEVICE_WINDOW（窗口表）**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| window_id | VARCHAR(100) | 主键，窗口唯一标识 |
+| channel | INT | 绑定的输出通道编号 |
+| x | INT | 窗口 X 坐标，默认 0 |
+| y | INT | 窗口 Y 坐标，默认 0 |
+| width | INT | 窗口宽度，默认 1920 |
+| height | INT | 窗口高度，默认 1080 |
+| source_type | VARCHAR(50) | 信号源类型 |
+| source_url | VARCHAR(500) | 信号源地址 |
+| create_time | VARCHAR(20) | 窗口创建时间 |
+
+### 7.3 与管控系统的关系
 
 模拟设备与管控系统是**两个独立进程**，各自启动：
 
@@ -605,7 +702,7 @@ Content-Type: application/json
 
 **设备定位：** 管控系统通过 `baseUrl` 来定位一台设备。`baseUrl` 指向模拟设备进程地址（如 `http://localhost:8086`），每个进程只有一台设备，`baseUrl` 即设备唯一标识。
 
-### 7.3 多设备模拟
+### 7.4 多设备模拟
 
 **一个进程 = 一台设备**，如需模拟多台设备，启动多个进程并绑定不同端口：
 
@@ -630,7 +727,7 @@ java -jar demo1-simulator.jar --server.port=8088
 
 > 每个进程内的设备信息完全独立，管控系统通过 `baseUrl` 区分不同设备。
 
-### 7.4 统一返回格式
+### 7.5 统一返回格式
 
 接口返回统一使用 `Result<T>` 封装：
 

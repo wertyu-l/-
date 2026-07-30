@@ -1,4 +1,4 @@
-# demo1 — 用户管理系统
+# demo1 — 管理系统
 
 Spring Boot + MyBatis + H2 + JWT 的用户管理后端项目。
 
@@ -42,29 +42,50 @@ mvnw.cmd clean spring-boot:run       # Windows cmd / PowerShell
 
 ## 技术栈
 
-- Spring Boot 4.1.0
-- MyBatis + PageHelper
-- H2 Database
-- JWT (jjwt 0.12.6)
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Spring Boot | 4.1.0 | 核心框架 |
+| MyBatis | 4.0.0 | ORM |
+| PageHelper | 2.1.0 | 分页插件 |
+| H2 Database | — | 文件数据库 |
+| JWT (jjwt) | 0.12.6 | 身份认证 |
+| Spring Security Crypto | — | BCrypt 密码加密 |
+| Jackson | — | JSON 序列化 / UDP 发现 |
+| Spring JDBC | — | JdbcTemplate（模拟设备） |
+| JUnit 5 + Mockito | — | 单元测试 |
 
 ## 项目结构
 
 ```
 demo1/
-├── src/main/java/com/example/demo/
-│   ├── common/          # 通用类（Result, PageDTO 等）
-│   ├── config/          # Web 配置
-│   ├── controller/      # 控制器
-│   ├── interceptor/     # JWT 拦截器
-│   ├── mapper/          # MyBatis Mapper
-│   ├── service/         # 服务层
-│   ├── ST/              # 实体类
-│   └── utils/           # 工具类（JWT）
-├── src/main/resources/
-│   ├── application.yaml # 应用配置
-│   ├── schema.sql       # 建表脚本
-│   ├── data.sql         # 初始数据
-│   ├── mapper/          # MyBatis XML
-│   └── static/          # 前端页面
-└── pom.xml
+├── demo1-common/              # 公共模块（共享模型、通用类）
+│   └── src/main/java/com/example/demo/
+│       ├── common/            #   Result, PageDTO, PageResult
+│       └── model/             #   SimDeviceInfo, SimDeviceStatus, SimDeviceCapability, SimWindow
+│
+├── demo1-server/              # 管控系统后端（端口 8085）
+│   └── src/main/java/com/example/demo/
+│       ├── ST/                #   实体类（User）
+│       ├── common/            #   请求/响应类（AddDeviceRequest, DevicePageVO, DiscoveredNode 等）
+│       ├── config/            #   Web 配置、安全配置
+│       ├── controller/        #   控制器（DeviceController, UserController）
+│       ├── driver/            #   设备驱动（DeviceDriver 接口, RestDeviceDriver, DeviceEndpoint）
+│       ├── interceptor/       #   JWT 拦截器
+│       ├── mapper/            #   MyBatis Mapper（DeviceMapper, UserMapper）
+│       ├── service/           #   服务层（DeviceService, UserService, DeviceDiscoveryService）
+│       └── utils/             #   工具类（JwtUtils）
+│
+├── demo1-simulator/           # REST 模拟设备 1（端口 8086）
+│   └── src/main/java/com/example/demo/simulator/
+│       ├── controller/        #   SimDeviceController（REST API）
+│       ├── core/              #   SimDeviceManager, DeviceRepository
+│       └── server/            #   DiscoveryListener（UDP 设备发现）
+│
+├── demo1-simulator2/          # REST 模拟设备 2（端口 8087）
+│   └── src/main/java/com/example/demo/simulator2/
+│       ├── controller/        #   SimDeviceController（REST API）
+│       ├── core/              #   SimDeviceManager, DeviceRepository
+│       └── server/            #   DiscoveryListener（UDP 设备发现）
+│
+└── pom.xml                    # 父 POM（多模块管理）
 ```

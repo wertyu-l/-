@@ -1,6 +1,9 @@
 server:
   port: 8086
 
+discovery:
+  port: 9999
+
 spring:
   application:
     name: demo1-simulator

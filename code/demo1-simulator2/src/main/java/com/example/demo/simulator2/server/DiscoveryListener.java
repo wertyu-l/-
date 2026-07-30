@@ -27,6 +27,9 @@ public class DiscoveryListener {
     @Value("${server.port:8087}")
     private int serverPort;
 
+    @Value("${discovery.port:9998}")
+    private int discoveryPort;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Thread listenerThread;
@@ -36,7 +39,7 @@ public class DiscoveryListener {
     @PostConstruct
     public void start() {
         listenerThread = new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket(9999)) {
+            try (DatagramSocket socket = new DatagramSocket(discoveryPort)) {
                 socket.setBroadcast(true);
                 byte[] buf = new byte[1024];
                 while (running) {
@@ -65,7 +68,7 @@ public class DiscoveryListener {
                     }
                 }
             } catch (Exception e) {
-                // 端口占用等致命错误，线程退出
+                System.err.println("[DiscoveryListener2] 端口 " + discoveryPort + " 绑定失败: " + e.getMessage());
             }
         }, "discovery-listener2");
         listenerThread.setDaemon(true);

@@ -89,7 +89,9 @@ demo1-common/                           ← 共享数据模型
 
 ## 4. 接口列表
 
-模拟设备独立运行，默认端口 **8086**，基路径：`http://localhost:8086/simulator`。不同设备进程使用不同端口，接口路径结构完全一致，仅端口号不同。
+模拟设备独立运行，默认端口 **8086**，基路径：`http://192.168.1.100:8086/simulator`。不同设备进程使用不同端口，接口路径结构完全一致，仅端口号不同。
+
+> **注意：** 管控系统仅接受 IP+端口 格式的 `baseUrl`，`localhost` 和域名不允许。
 
 ### 4.1 获取设备信息
 
@@ -100,7 +102,7 @@ GET /simulator/device/info
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/info
+GET http://192.168.1.100:8086/simulator/device/info
 ```
 
 **成功响应：**
@@ -129,7 +131,7 @@ GET /simulator/device/status
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/status
+GET http://192.168.1.100:8086/simulator/device/status
 ```
 
 **成功响应：**
@@ -157,7 +159,7 @@ GET /simulator/device/capability
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/capability
+GET http://192.168.1.100:8086/simulator/device/capability
 ```
 
 **成功响应：**
@@ -321,7 +323,7 @@ DELETE /simulator/device/window/{windowId}
 **请求示例：**
 
 ```
-DELETE http://localhost:8086/simulator/device/window/win-001
+DELETE http://192.168.1.100:8086/simulator/device/window/win-001
 ```
 
 **成功响应：**
@@ -355,7 +357,7 @@ GET /simulator/device/windows
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/windows
+GET http://192.168.1.100:8086/simulator/device/windows
 ```
 
 **成功响应：**
@@ -402,7 +404,7 @@ GET /simulator/device/window/{windowId}
 **请求示例：**
 
 ```
-GET http://localhost:8086/simulator/device/window/win-001
+GET http://192.168.1.100:8086/simulator/device/window/win-001
 ```
 
 **成功响应：**
@@ -700,7 +702,7 @@ Content-Type: application/json
 
 管控系统内部通过 `DeviceDriver` 接口封装 HTTP 调用，`RestDeviceDriver` 为 REST 设备的实现，具体看设备管理模块设计文档。
 
-**设备定位：** 管控系统通过 `baseUrl` 来定位一台设备。`baseUrl` 指向模拟设备进程地址（如 `http://localhost:8086`），每个进程只有一台设备，`baseUrl` 即设备唯一标识。
+**设备定位：** 管控系统通过 `baseUrl` 来定位一台设备。`baseUrl` 指向模拟设备进程地址（如 `http://192.168.1.100:8086`），**仅接受 IP+端口格式**，每个进程只有一台设备，`baseUrl` 即设备唯一标识。
 
 ### 7.4 多设备模拟
 
@@ -717,7 +719,7 @@ java -jar demo1-simulator.jar --server.port=8087
 java -jar demo1-simulator.jar --server.port=8088
 ```
 
-管控系统分别向 `http://localhost:8086`、`http://localhost:8087`、`http://localhost:8088` 添加设备，每个地址对应一台独立设备。
+管控系统分别向 `http://192.168.1.100:8086`、`http://192.168.1.100:8087`、`http://192.168.1.100:8088` 添加设备，每个地址对应一台独立设备。
 
 | 端口 | 说明 |
 |------|------|

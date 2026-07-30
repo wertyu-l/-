@@ -4,6 +4,7 @@ import com.example.demo.common.DiscoveredNode;
 import com.example.demo.mapper.DeviceMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.DatagramPacket;
@@ -17,15 +18,18 @@ import java.util.Map;
  * 设备发现服务
  * <p>
  * 通过 UDP 广播向局域网内所有模拟设备发送 {@code {"action":"discovery"}} 搜索请求，
- * 等待 3 秒收集回复，返回发现的设备列表（含是否已添加标记）。
+ * 向多个发现端口广播，等待 3 秒收集回复，返回发现的设备列表（含是否已添加标记）。
  * <p>
- * 广播地址：255.255.255.255，端口：9999，纯 JDK 实现，无额外依赖。
+ * 广播地址：255.255.255.255，纯 JDK 实现，无额外依赖。
  */
 @Service
 public class DeviceDiscoveryService {
 
     @Autowired
     private DeviceMapper deviceMapper;
+
+    @Value("${discovery.ports:9999}")
+    private String discoveryPorts;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -37,16 +41,30 @@ public class DeviceDiscoveryService {
     public List<DiscoveredNode> discover() {
         List<DiscoveredNode> result = new ArrayList<>();
 
+        // 解析端口列表
+        String[] ports = discoveryPorts.split(",");
+        int[] portArray = new int[ports.length];
+        for (int i = 0; i < ports.length; i++) {
+            portArray[i] = Integer.parseInt(ports[i].trim());
+        }
+
         try (DatagramSocket socket = new DatagramSocket()) {
             socket.setBroadcast(true);
             socket.setSoTimeout(3000); // 3 秒超时
 
-            // 发送广播
             byte[] requestData = objectMapper.writeValueAsBytes(Map.of("action", "discovery"));
-            DatagramPacket requestPacket = new DatagramPacket(
-                    requestData, requestData.length,
-                    InetAddress.getByName("255.255.255.255"), 9999);
-            socket.send(requestPacket);
+
+            // 向每个发现端口发送广播
+            for (int port : portArray) {
+                try {
+                    DatagramPacket requestPacket = new DatagramPacket(
+                            requestData, requestData.length,
+                            InetAddress.getByName("255.255.255.255"), port);
+                    socket.send(requestPacket);
+                } catch (Exception e) {
+                    System.err.println("[DeviceDiscovery] 向端口 " + port + " 广播失败: " + e.getMessage());
+                }
+            }
 
             // 收集回复
             byte[] buf = new byte[1024];

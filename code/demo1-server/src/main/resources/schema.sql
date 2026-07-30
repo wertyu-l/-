@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS DEVICE (
     max_resolution  VARCHAR(50)   DEFAULT '1920x1080',
     base_url        VARCHAR(300)  NOT NULL UNIQUE,
     enabled         INT           DEFAULT 1,
-    online          INT           DEFAULT 0,
+    online          INT           DEFAULT 1,
     last_heartbeat  TIMESTAMP     NULL,
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP

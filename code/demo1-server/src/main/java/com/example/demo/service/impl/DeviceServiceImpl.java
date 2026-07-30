@@ -50,6 +50,10 @@ public class DeviceServiceImpl implements DeviceService {
         if (!StringUtils.hasText(baseUrl)) {
             throw new RuntimeException("baseUrl不能为空");
         }
+        // 只允许 IP+端口 格式
+        if (!baseUrl.matches("^https?://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+$")) {
+            throw new RuntimeException("请使用 IP+端口 格式，例如 http://192.168.1.100:8086");
+        }
 
         // 2. 查重
         DevicePageVO existing = deviceMapper.findByBaseUrl(baseUrl);

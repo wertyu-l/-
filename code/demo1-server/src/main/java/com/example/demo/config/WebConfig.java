@@ -15,6 +15,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/user/login",
                         "/h2-console/**",
+                        "/",
                         "/index.html",
                         "/*.css",
                         "/*.js",

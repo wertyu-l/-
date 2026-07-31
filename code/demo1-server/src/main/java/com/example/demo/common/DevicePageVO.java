@@ -4,6 +4,8 @@ import com.example.demo.model.SimDeviceInfo;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.LocalDateTime;
+
 /**
  * 设备分页返回 VO
  * <p>
@@ -24,5 +26,8 @@ public class DevicePageVO extends SimDeviceInfo {
 
     /** 启用状态（1=启用，0=禁用） */
     private Integer enabled;
+
+    /** 最后心跳时间 */
+    private LocalDateTime lastHeartbeat;
 
 }

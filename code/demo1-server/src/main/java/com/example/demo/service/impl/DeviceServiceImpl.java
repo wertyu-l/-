@@ -52,7 +52,7 @@ public class DeviceServiceImpl implements DeviceService {
         }
         // 只允许 IP+端口 格式
         if (!baseUrl.matches("^https?://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+$")) {
-            throw new RuntimeException("请使用 IP+端口 格式，例如 http://192.168.1.100:8086");
+            throw new RuntimeException("请使用 IP+端口 格式");
         }
 
         // 2. 查重
@@ -193,11 +193,11 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 获取设备基本信息（实时查询模拟设备）
+     * 获取设备基本信息（查数据库）
      *
      * @param id 设备主键
      * @return 设备描述信息
-     * @throws RuntimeException 设备不存在或连接失败时抛出
+     * @throws RuntimeException 设备不存在时抛出
      */
     @Override
     public SimDeviceInfo getDeviceInfo(Long id) {
@@ -205,21 +205,15 @@ public class DeviceServiceImpl implements DeviceService {
         if (device == null) {
             throw new RuntimeException("设备不存在: id=" + id);
         }
-
-        DeviceEndpoint endpoint = buildEndpoint(device);
-        SimDeviceInfo info = restDeviceDriver.getInfo(endpoint);
-        if (info == null) {
-            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
-        }
-        return info;
+        return device;
     }
 
     /**
-     * 获取设备运行状态（实时查询模拟设备）
+     * 获取设备运行状态（查数据库）
      *
      * @param id 设备主键
      * @return 设备运行状态（在线状态、窗口数、启动时间）
-     * @throws RuntimeException 设备不存在或连接失败时抛出
+     * @throws RuntimeException 设备不存在时抛出
      */
     @Override
     public SimDeviceStatus getDeviceStatus(Long id) {
@@ -228,11 +222,10 @@ public class DeviceServiceImpl implements DeviceService {
             throw new RuntimeException("设备不存在: id=" + id);
         }
 
-        DeviceEndpoint endpoint = buildEndpoint(device);
-        SimDeviceStatus status = restDeviceDriver.getStatus(endpoint);
-        if (status == null) {
-            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
-        }
+        SimDeviceStatus status = new SimDeviceStatus();
+        status.setOnline(device.getOnline() != null && device.getOnline() == 1);
+        status.setWindowCount(0);
+        status.setUptime("");
         return status;
     }
 

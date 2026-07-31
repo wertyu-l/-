@@ -25,6 +25,7 @@
         <result column="base_url" property="baseUrl"/>
         <result column="online" property="online"/>
         <result column="enabled" property="enabled"/>
+        <result column="last_heartbeat" property="lastHeartbeat"/>
     </resultMap>
 
     <!-- ==================== 新增设备 ==================== -->
@@ -74,7 +75,7 @@
     <!-- ==================== 按 id 查询 ==================== -->
     <select id="findById" resultMap="PageVOMap">
         SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled
+               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
         FROM DEVICE
         WHERE id = #{id}
     </select>
@@ -82,7 +83,7 @@
     <!-- ==================== 按 baseUrl 查询 ==================== -->
     <select id="findByBaseUrl" resultMap="PageVOMap">
         SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled
+               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
         FROM DEVICE
         WHERE base_url = #{baseUrl}
     </select>
@@ -90,7 +91,7 @@
     <!-- ==================== 查询所有设备 ==================== -->
     <select id="findAll" resultMap="PageVOMap">
         SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled
+               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
         FROM DEVICE
         ORDER BY id ASC
     </select>
@@ -98,7 +99,7 @@
     <!-- ==================== 分页查询 ==================== -->
     <select id="pageQuery" resultMap="PageVOMap">
         SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled
+               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
         FROM DEVICE
         <where>
             <if test="deviceName != null and deviceName != ''">

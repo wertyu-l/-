@@ -1,4 +1,4 @@
-﻿# REST 模拟设备接口文档
+# REST 模拟设备接口文档
 
 ## 1. 概述
 
@@ -47,6 +47,7 @@ demo1-common/                           ← 共享数据模型
 | deviceType | String | 设备类型，当前为 `REST` |
 | model | String | 设备型号，如 `DS-D2055NH-A` |
 | serialNumber | String | 序列号 |
+| inputChannels | int | 输入通道数 |
 | outputChannels | int | 输出通道数 |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
 
@@ -116,6 +117,7 @@ GET http://192.168.1.100:8086/simulator/device/info
     "deviceType": "REST",
     "model": "DS-D2055NH-A",
     "serialNumber": "SN-REST-2024-0001",
+    "inputChannels": 2,
     "outputChannels": 2,
     "maxResolution": "1920x1080"
   }
@@ -174,6 +176,7 @@ GET http://192.168.1.100:8086/simulator/device/capability
     "supportResize": true,
     "supportOverlay": true,
     "maxResolution": "1920x1080",
+    "inputChannels": 2,
     "outputChannels": 2
   }
 }
@@ -197,6 +200,7 @@ Content-Type: application/json
   "supportResize": true,
   "supportOverlay": false,
   "maxResolution": "1920x1080",
+  "inputChannels": 2,
   "outputChannels": 2
 }
 ```
@@ -213,6 +217,7 @@ Content-Type: application/json
     "supportResize": true,
     "supportOverlay": false,
     "maxResolution": "1920x1080",
+    "inputChannels": 2,
     "outputChannels": 2
   }
 }
@@ -288,16 +293,6 @@ Content-Type: application/json
 {
   "code": 0,
   "msg": "窗口已存在: win-001",
-  "data": null
-}
-```
-
-**失败响应（通道已被占用）：**
-
-```json
-{
-  "code": 0,
-  "msg": "通道已被占用: 1",
   "data": null
 }
 ```
@@ -603,6 +598,7 @@ Content-Type: application/json
 | deviceType | REST |
 | model | DS-D2055NH-A |
 | serialNumber | SN-REST-2024-0001 |
+| inputChannels | 2 |
 | outputChannels | 2 |
 | maxResolution | 1920x1080 |
 
@@ -623,6 +619,7 @@ Content-Type: application/json
 | supportResize | true |
 | supportOverlay | true |
 | maxResolution | 1920x1080 |
+| inputChannels | 2 |
 | outputChannels | 2 |
 
 
@@ -660,6 +657,7 @@ Content-Type: application/json
 | device_type | VARCHAR(50) | 设备类型，默认 `REST` |
 | model | VARCHAR(100) | 设备型号 |
 | serial_number | VARCHAR(100) | 序列号 |
+| input_channels | INT | 输入通道数 |
 | output_channels | INT | 输出通道数 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
 
@@ -673,6 +671,7 @@ Content-Type: application/json
 | support_resize | BOOLEAN | 是否支持窗口缩放 |
 | support_overlay | BOOLEAN | 是否支持窗口叠加 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
+| input_channels | INT | 输入通道数 |
 | output_channels | INT | 输出通道数 |
 
 **DEVICE_WINDOW（窗口表）**

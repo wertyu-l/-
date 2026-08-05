@@ -1,4 +1,4 @@
-# REST 模拟设备接口文档
+﻿# REST 模拟设备接口文档
 
 ## 1. 概述
 
@@ -45,11 +45,20 @@ demo1-common/                           ← 共享数据模型
 |------|------|------|
 | deviceName | String | 设备名称，如 `REST-Node-01` |
 | deviceType | String | 设备类型，当前为 `REST` |
+| deviceCategory | String | 设备类别，`INPUT`=输入设备，`OUTPUT`=输出设备 |
 | model | String | 设备型号，如 `DS-D2055NH-A` |
 | serialNumber | String | 序列号 |
-| inputChannels | int | 输入通道数 |
-| outputChannels | int | 输出通道数 |
+| inputChannel1 | String | 输入通道1名称，如 `HDMI-1`，为空表示无该通道 |
+| outputChannel1 | String | 输出通道1名称，如 `OUT-1`，为空表示无该通道 |
+| outputChannel2 | String | 输出通道2名称，如 `OUT-2`，为空表示无该通道 |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
+
+> **通道名唯一性：** 同一设备下所有非空通道名不可重复。
+>
+> **设备类型说明：** 设备是单一类型的，由 `deviceCategory` 字段标识（`INPUT`/`OUTPUT`）。
+> - **输入设备（`deviceCategory = "INPUT"`）：** 仅 `inputChannel1` 有值，`outputChannel1`/`outputChannel2` 为空，用于提供信号源
+> - **输出设备（`deviceCategory = "OUTPUT"`）：** 仅 `outputChannel1`/`outputChannel2` 有值，`inputChannel1` 为空，用于大屏绑定显示
+> - 数据模型中同时保留输入/输出通道字段仅为方便，实际使用中按 `deviceCategory` 判断
 
 ### 3.2 SimDeviceStatus — 设备运行状态
 
@@ -66,13 +75,13 @@ demo1-common/                           ← 共享数据模型
 | 字段 | 类型 | 必填 | 不可重复 | 说明 |
 |------|------|:--:|:----:|------|
 | windowId | String | 是 | 是 | 窗口唯一标识，由管控系统生成，全局唯一 |
-| channel | int | 是 | 是 | 绑定的输出通道编号，从 1 开始，同一设备下不可重复 |
+| channelName | String | 是 | 是 | 绑定的输出通道名称，必须是该设备已定义的输出通道名之一 |
 | x | int | 否 | 否 | 窗口左上角 X 坐标，默认 0 |
 | y | int | 否 | 否 | 窗口左上角 Y 坐标，默认 0 |
 | width | int | 否 | 否 | 窗口宽度（像素），默认 1920 |
 | height | int | 否 | 否 | 窗口高度（像素），默认 1080 |
-| sourceType | String | 否 | 否 | 信号源类型，如 `HDMI`、`VGA`、`Stream` |
-| sourceUrl | String | 否 | 否 | 信号源地址，如流媒体 URL，默认 `""` |
+| sourceType | String | 否 | 否 | 信号源类型，由设备根据通道配置返回，如 `HDMI`、`VGA`、`Stream` |
+| sourceUrl | String | 否 | 否 | 信号源地址，由设备根据通道配置返回，如流媒体 URL，默认 `""` |
 | createTime | String | 否 | 否 | 窗口创建时间，格式 `yyyy-MM-dd HH:mm:ss`，自动生成 |
 
 ### 3.4 SimDeviceCapability — 设备能力
@@ -81,12 +90,15 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| maxWindows | int | 最大窗口数量，超出后拒绝创建 |
+| maxWindows | int | 输出设备最大窗口数量，大屏级别校验；输入设备忽略此字段 |
 | supportMove | boolean | 是否支持窗口移动 |
 | supportResize | boolean | 是否支持窗口缩放 |
 | supportOverlay | boolean | 是否支持窗口叠加 |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
-| outputChannels | int | 输出通道数 |
+
+> **注意：** `maxWindows` 仅对输出设备有意义，输入设备无窗口数量限制。
+> `inputChannel1`/`outputChannel1`/`outputChannel2` 字段含义同上，按设备类型二选一。
+
 
 ## 4. 接口列表
 
@@ -117,8 +129,9 @@ GET http://192.168.1.100:8086/simulator/device/info
     "deviceType": "REST",
     "model": "DS-D2055NH-A",
     "serialNumber": "SN-REST-2024-0001",
-    "inputChannels": 2,
-    "outputChannels": 2,
+    "inputChannel1": "HDMI-1",
+    "outputChannel1": "OUT-1",
+    "outputChannel2": "OUT-2",
     "maxResolution": "1920x1080"
   }
 }
@@ -176,8 +189,9 @@ GET http://192.168.1.100:8086/simulator/device/capability
     "supportResize": true,
     "supportOverlay": true,
     "maxResolution": "1920x1080",
-    "inputChannels": 2,
-    "outputChannels": 2
+    "inputChannel1": "HDMI-1",
+    "outputChannel1": "OUT-1",
+    "outputChannel2": ""
   }
 }
 ```
@@ -200,8 +214,9 @@ Content-Type: application/json
   "supportResize": true,
   "supportOverlay": false,
   "maxResolution": "1920x1080",
-  "inputChannels": 2,
-  "outputChannels": 2
+  "inputChannel1": "HDMI-1",
+  "outputChannel1": "OUT-1",
+  "outputChannel2": ""
 }
 ```
 
@@ -217,15 +232,16 @@ Content-Type: application/json
     "supportResize": true,
     "supportOverlay": false,
     "maxResolution": "1920x1080",
-    "inputChannels": 2,
-    "outputChannels": 2
+    "inputChannel1": "HDMI-1",
+    "outputChannel1": "OUT-1",
+    "outputChannel2": ""
   }
 }
 ```
 
 ### 4.5 创建窗口
 
-向设备下发创建窗口命令。创建前会校验：窗口总数是否超过 `maxWindows` 限制。
+向设备下发创建窗口命令。创建前会校验：输出通道下窗口总数是否超过 `maxWindows` 限制（输入通道不限制），以及 `channelName` 是否为该设备有效的输出通道名。`sourceType` 和 `sourceUrl` 由设备根据通道配置自动返回，无需调用方传入。
 
 ```
 POST /simulator/device/window
@@ -237,13 +253,11 @@ Content-Type: application/json
 ```json
 {
   "windowId": "win-001",
-  "channel": 1,
+  "channelName": "HDMI-1",
   "x": 0,
   "y": 0,
   "width": 960,
   "height": 540,
-  "sourceType": "Stream",
-  "sourceUrl": "rtsp://example.com/stream1"
 }
 ```
 
@@ -255,13 +269,13 @@ Content-Type: application/json
   "msg": null,
   "data": {
     "windowId": "win-001",
-    "channel": 1,
+    "channelName": "HDMI-1",
     "x": 0,
     "y": 0,
     "width": 960,
     "height": 540,
-    "sourceType": "Stream",
-    "sourceUrl": "rtsp://example.com/stream1",
+    "sourceType": "HDMI",
+    "sourceUrl": "",
     "createTime": "2026-07-28 14:30:00"
   }
 }
@@ -277,12 +291,12 @@ Content-Type: application/json
 }
 ```
 
-**失败响应（通道编号无效）：**
+**失败响应（通道名无效）：**
 
 ```json
 {
   "code": 0,
-  "msg": "通道编号必须大于0",
+  "msg": "通道名无效: OUT-99",
   "data": null
 }
 ```
@@ -364,18 +378,18 @@ GET http://192.168.1.100:8086/simulator/device/windows
   "data": [
     {
       "windowId": "win-001",
-      "channel": 1,
+      "channelName": "HDMI-1",
       "x": 0,
       "y": 0,
       "width": 960,
       "height": 540,
-      "sourceType": "Stream",
-      "sourceUrl": "rtsp://example.com/stream1",
+      "sourceType": "HDMI",
+      "sourceUrl": "",
       "createTime": "2026-07-28 14:30:00"
     },
     {
       "windowId": "win-002",
-      "channel": 2,
+      "channelName": "OUT-2",
       "x": 960,
       "y": 0,
       "width": 960,
@@ -410,13 +424,13 @@ GET http://192.168.1.100:8086/simulator/device/window/win-001
   "msg": null,
   "data": {
     "windowId": "win-001",
-    "channel": 1,
+    "channelName": "HDMI-1",
     "x": 0,
     "y": 0,
     "width": 960,
     "height": 540,
-    "sourceType": "Stream",
-    "sourceUrl": "rtsp://example.com/stream1",
+    "sourceType": "HDMI",
+    "sourceUrl": "",
     "createTime": "2026-07-28 14:30:00"
   }
 }
@@ -480,13 +494,13 @@ Content-Type: application/json
   "msg": null,
   "data": {
     "windowId": "win-001",
-    "channel": 1,
+    "channelName": "HDMI-1",
     "x": 100,
     "y": 200,
     "width": 800,
     "height": 600,
-    "sourceType": "Stream",
-    "sourceUrl": "rtsp://example.com/stream1",
+    "sourceType": "HDMI",
+    "sourceUrl": "",
     "createTime": "2026-07-28 14:30:00"
   }
 }
@@ -598,8 +612,9 @@ Content-Type: application/json
 | deviceType | REST |
 | model | DS-D2055NH-A |
 | serialNumber | SN-REST-2024-0001 |
-| inputChannels | 2 |
-| outputChannels | 2 |
+| inputChannel1 | HDMI-1 |
+| outputChannel1 | OUT-1 |
+| outputChannel2 | OUT-2 |
 | maxResolution | 1920x1080 |
 
 ### 6.2 设备状态（SimDeviceStatus）
@@ -619,8 +634,9 @@ Content-Type: application/json
 | supportResize | true |
 | supportOverlay | true |
 | maxResolution | 1920x1080 |
-| inputChannels | 2 |
-| outputChannels | 2 |
+| inputChannel1 | HDMI-1 |
+| outputChannel1 | OUT-1 |
+| outputChannel2 | OUT-2 |
 
 
 ---
@@ -657,8 +673,9 @@ Content-Type: application/json
 | device_type | VARCHAR(50) | 设备类型，默认 `REST` |
 | model | VARCHAR(100) | 设备型号 |
 | serial_number | VARCHAR(100) | 序列号 |
-| input_channels | INT | 输入通道数 |
-| output_channels | INT | 输出通道数 |
+| input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
+| output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
+| output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
 
 **DEVICE_CAPABILITY（设备能力表）**
@@ -671,15 +688,16 @@ Content-Type: application/json
 | support_resize | BOOLEAN | 是否支持窗口缩放 |
 | support_overlay | BOOLEAN | 是否支持窗口叠加 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
-| input_channels | INT | 输入通道数 |
-| output_channels | INT | 输出通道数 |
+| input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
+| output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
+| output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
 
 **DEVICE_WINDOW（窗口表）**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | window_id | VARCHAR(100) | 主键，窗口唯一标识 |
-| channel | INT | 绑定的输出通道编号 |
+| channel_name | VARCHAR(100) | 绑定的输出通道名称 |
 | x | INT | 窗口 X 坐标，默认 0 |
 | y | INT | 窗口 Y 坐标，默认 0 |
 | width | INT | 窗口宽度，默认 1920 |

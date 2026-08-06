@@ -3,25 +3,39 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.mapper.DeviceMapper">
 
-    <!-- 设备描述字段映射（SimDeviceInfo，不含 baseUrl、id、online） -->
+    <!-- 设备描述字段映射（SimDeviceInfo，不含 baseUrl、id、online、enabled） -->
     <resultMap id="BaseResultMap" type="com.example.demo.model.SimDeviceInfo">
         <result column="device_name" property="deviceName"/>
         <result column="device_type" property="deviceType"/>
+        <result column="device_category" property="deviceCategory"/>
         <result column="model" property="model"/>
         <result column="serial_number" property="serialNumber"/>
-        <result column="output_channels" property="outputChannels"/>
+        <result column="input_channel_1" property="inputChannel1"/>
+        <result column="input_channel_2" property="inputChannel2"/>
+        <result column="output_channel_1" property="outputChannel1"/>
+        <result column="output_channel_2" property="outputChannel2"/>
+        <result column="output_channel_3" property="outputChannel3"/>
         <result column="max_resolution" property="maxResolution"/>
     </resultMap>
 
-    <!-- 分页 VO 映射（DevicePageVO，继承 SimDeviceInfo + id / baseUrl / online） -->
+    <!-- 分页 VO 映射（DevicePageVO，继承 SimDeviceInfo + id / baseUrl / online / enabled / capability） -->
     <resultMap id="PageVOMap" type="com.example.demo.common.DevicePageVO">
         <id column="id" property="id"/>
         <result column="device_name" property="deviceName"/>
         <result column="device_type" property="deviceType"/>
+        <result column="device_category" property="deviceCategory"/>
         <result column="model" property="model"/>
         <result column="serial_number" property="serialNumber"/>
-        <result column="output_channels" property="outputChannels"/>
+        <result column="input_channel_1" property="inputChannel1"/>
+        <result column="input_channel_2" property="inputChannel2"/>
+        <result column="output_channel_1" property="outputChannel1"/>
+        <result column="output_channel_2" property="outputChannel2"/>
+        <result column="output_channel_3" property="outputChannel3"/>
         <result column="max_resolution" property="maxResolution"/>
+        <result column="max_windows" property="maxWindows"/>
+        <result column="support_move" property="supportMove"/>
+        <result column="support_resize" property="supportResize"/>
+        <result column="support_overlay" property="supportOverlay"/>
         <result column="base_url" property="baseUrl"/>
         <result column="online" property="online"/>
         <result column="enabled" property="enabled"/>
@@ -30,11 +44,17 @@
 
     <!-- ==================== 新增设备 ==================== -->
     <insert id="insert">
-        INSERT INTO DEVICE (device_name, device_type, model, serial_number,
-                            output_channels, max_resolution, base_url)
-        VALUES (#{device.deviceName}, #{device.deviceType}, #{device.model},
-                #{device.serialNumber}, #{device.outputChannels},
-                #{device.maxResolution}, #{baseUrl})
+        INSERT INTO DEVICE (device_name, device_type, device_category, model, serial_number,
+                            input_channel_1, input_channel_2, output_channel_1, output_channel_2, output_channel_3, max_resolution,
+                            max_windows, support_move, support_resize, support_overlay,
+                            base_url, online)
+        VALUES (#{device.deviceName}, #{device.deviceType}, #{device.deviceCategory}, #{device.model},
+                #{device.serialNumber},
+                #{device.inputChannel1}, #{device.inputChannel2},
+                #{device.outputChannel1}, #{device.outputChannel2}, #{device.outputChannel3},
+                #{device.maxResolution},
+                #{capability.maxWindows}, #{capability.supportMove}, #{capability.supportResize}, #{capability.supportOverlay},
+                #{baseUrl}, 1)
     </insert>
 
     <!-- ==================== 删除设备 ==================== -->
@@ -64,42 +84,59 @@
         UPDATE DEVICE
         SET device_name     = #{device.deviceName},
             device_type     = #{device.deviceType},
+            device_category = #{device.deviceCategory},
             model           = #{device.model},
             serial_number   = #{device.serialNumber},
-            output_channels = #{device.outputChannels},
+            input_channel_1 = #{device.inputChannel1},
+            input_channel_2 = #{device.inputChannel2},
+            output_channel_1 = #{device.outputChannel1},
+            output_channel_2 = #{device.outputChannel2},
+            output_channel_3 = #{device.outputChannel3},
             max_resolution  = #{device.maxResolution},
+            max_windows     = #{capability.maxWindows},
+            support_move    = #{capability.supportMove},
+            support_resize  = #{capability.supportResize},
+            support_overlay = #{capability.supportOverlay},
             update_time     = CURRENT_TIMESTAMP
         WHERE id = #{id}
     </update>
 
     <!-- ==================== 按 id 查询 ==================== -->
     <select id="findById" resultMap="PageVOMap">
-        SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
+        SELECT id, device_name, device_type, device_category, model, serial_number,
+               input_channel_1, input_channel_2, output_channel_1, output_channel_2, output_channel_3, max_resolution,
+               max_windows, support_move, support_resize, support_overlay,
+               base_url, online, enabled, last_heartbeat
         FROM DEVICE
         WHERE id = #{id}
     </select>
 
     <!-- ==================== 按 baseUrl 查询 ==================== -->
     <select id="findByBaseUrl" resultMap="PageVOMap">
-        SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
+        SELECT id, device_name, device_type, device_category, model, serial_number,
+               input_channel_1, input_channel_2, output_channel_1, output_channel_2, output_channel_3, max_resolution,
+               max_windows, support_move, support_resize, support_overlay,
+               base_url, online, enabled, last_heartbeat
         FROM DEVICE
         WHERE base_url = #{baseUrl}
     </select>
 
     <!-- ==================== 查询所有设备 ==================== -->
     <select id="findAll" resultMap="PageVOMap">
-        SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
+        SELECT id, device_name, device_type, device_category, model, serial_number,
+               input_channel_1, input_channel_2, output_channel_1, output_channel_2, output_channel_3, max_resolution,
+               max_windows, support_move, support_resize, support_overlay,
+               base_url, online, enabled, last_heartbeat
         FROM DEVICE
         ORDER BY id ASC
     </select>
 
     <!-- ==================== 分页查询 ==================== -->
     <select id="pageQuery" resultMap="PageVOMap">
-        SELECT id, device_name, device_type, model, serial_number,
-               output_channels, max_resolution, base_url, online, enabled, last_heartbeat
+        SELECT id, device_name, device_type, device_category, model, serial_number,
+               input_channel_1, input_channel_2, output_channel_1, output_channel_2, output_channel_3, max_resolution,
+               max_windows, support_move, support_resize, support_overlay,
+               base_url, online, enabled, last_heartbeat
         FROM DEVICE
         <where>
             <if test="deviceName != null and deviceName != ''">

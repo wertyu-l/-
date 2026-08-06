@@ -207,6 +207,21 @@ var DeviceApi = {
     return api('/device/page?' + qs.toString());
   },
 
+  /** 获取设备基本信息（实时查询模拟设备） */
+  getInfo: function (id) {
+    return api('/device/' + id + '/info');
+  },
+
+  /** 获取设备运行状态（实时查询模拟设备） */
+  getStatus: function (id) {
+    return api('/device/' + id + '/status');
+  },
+
+  /** 获取设备能力 */
+  getCapability: function (id) {
+    return api('/device/' + id + '/capability');
+  },
+
 };
 
 // ---------- 视图切换 ----------
@@ -356,7 +371,7 @@ function renderDeviceTable(records) {
   var tbody = $('#deviceTableBody');
 
   if (!records || records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="table-empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="table-empty">暂无数据</td></tr>';
     return;
   }
 
@@ -391,9 +406,9 @@ function renderDeviceTable(records) {
     html += '<tr>';
     html += '<td>' + escapeHtml(d.deviceName) + '</td>';
     html += '<td>' + escapeHtml(d.deviceType) + '</td>';
+    html += '<td>' + (d.deviceCategory === 'INPUT' ? '<span class="status-tag status-enabled">输入设备</span>' : d.deviceCategory === 'OUTPUT' ? '<span class="status-tag status-disabled">输出设备</span>' : escapeHtml(d.deviceCategory || '-')) + '</td>';
     html += '<td>' + escapeHtml(d.model) + '</td>';
     html += '<td>' + escapeHtml(d.serialNumber) + '</td>';
-    html += '<td>' + (d.outputChannels != null ? d.outputChannels : '') + '</td>';
     html += '<td>' + escapeHtml(d.maxResolution) + '</td>';
     html += '<td style="font-family:monospace;font-size:12px;">' + escapeHtml(d.baseUrl) + '</td>';
     html += '<td>' + onlineHtml + '</td>';
@@ -434,7 +449,7 @@ function formatDateTime(dateStr) {
 // ---------- 加载设备列表 ----------
 async function loadDeviceList() {
   try {
-    $('#deviceTableBody').innerHTML = '<tr><td colspan="11" class="table-empty">加载中...</td></tr>';
+    $('#deviceTableBody').innerHTML = '<tr><td colspan="10" class="table-empty">加载中...</td></tr>';
 
     var result = await DeviceApi.page({
       deviceName: DevicePageState.searchDeviceName || null,
@@ -449,7 +464,7 @@ async function loadDeviceList() {
     renderDevicePagination();
   } catch (err) {
     $('#deviceTableBody').innerHTML =
-      '<tr><td colspan="11" class="table-empty" style="color:#e74c3c;">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
+      '<tr><td colspan="10" class="table-empty" style="color:#e74c3c;">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
     renderDevicePagination();
   }
 }
@@ -490,7 +505,16 @@ function openDeviceDetailModal(device) {
   infoHtml += '<div class="detail-item"><span class="detail-label">设备类型</span><span class="detail-value">' + escapeHtml(device.deviceType) + '</span></div>';
   infoHtml += '<div class="detail-item"><span class="detail-label">型号</span><span class="detail-value">' + escapeHtml(device.model) + '</span></div>';
   infoHtml += '<div class="detail-item"><span class="detail-label">序列号</span><span class="detail-value">' + escapeHtml(device.serialNumber) + '</span></div>';
-  infoHtml += '<div class="detail-item"><span class="detail-label">输出通道</span><span class="detail-value">' + (device.outputChannels != null ? device.outputChannels : '') + '</span></div>';
+  var inputChannels = [];
+  if (device.inputChannel1) inputChannels.push(device.inputChannel1);
+  if (device.inputChannel2) inputChannels.push(device.inputChannel2);
+  var outputChannels = [];
+  if (device.outputChannel1) outputChannels.push(device.outputChannel1);
+  if (device.outputChannel2) outputChannels.push(device.outputChannel2);
+  if (device.outputChannel3) outputChannels.push(device.outputChannel3);
+  infoHtml += '<div class="detail-item"><span class="detail-label">设备类别</span><span class="detail-value">' + (device.deviceCategory === 'INPUT' ? '输入设备' : device.deviceCategory === 'OUTPUT' ? '输出设备' : (device.deviceCategory || '')) + '</span></div>';
+  infoHtml += '<div class="detail-item"><span class="detail-label">输入通道</span><span class="detail-value">' + (inputChannels.length > 0 ? inputChannels.join(', ') : '无') + '</span></div>';
+  infoHtml += '<div class="detail-item"><span class="detail-label">输出通道</span><span class="detail-value">' + (outputChannels.length > 0 ? outputChannels.join(', ') : '无') + '</span></div>';
   infoHtml += '<div class="detail-item"><span class="detail-label">最大分辨率</span><span class="detail-value">' + escapeHtml(device.maxResolution) + '</span></div>';
   infoHtml += '<div class="detail-item"><span class="detail-label">Base URL</span><span class="detail-value" style="font-family:monospace;font-size:12px;">' + escapeHtml(device.baseUrl) + '</span></div>';
   $('#deviceInfoGrid').innerHTML = infoHtml;
@@ -501,6 +525,32 @@ function openDeviceDetailModal(device) {
   statusHtml += '<div class="detail-item"><span class="detail-label">启用状态</span><span class="detail-value">' + (device.enabled === 1 ? '<span class="status-tag status-enabled">已启用</span>' : '<span class="status-tag status-disabled">已禁用</span>') + '</span></div>';
   statusHtml += '<div class="detail-item"><span class="detail-label">最后心跳</span><span class="detail-value">' + (device.lastHeartbeat ? formatDateTime(device.lastHeartbeat) : '暂无') + '</span></div>';
   $('#deviceStatusGrid').innerHTML = statusHtml;
+
+  // 设备能力（异步加载，显示占位文字）
+  $('#deviceCapabilityGrid').innerHTML = '<div class="detail-loading">加载中...</div>';
+  DeviceApi.getCapability(device.id).then(function (result) {
+    var cap = result.data;
+    var capHtml = '';
+    if (device.deviceCategory === 'OUTPUT') {
+      capHtml += '<div class="detail-item"><span class="detail-label">最大窗口数</span><span class="detail-value">' + cap.maxWindows + '</span></div>';
+    }
+    capHtml += '<div class="detail-item"><span class="detail-label">窗口移动</span><span class="detail-value">' + (cap.supportMove ? '支持' : '不支持') + '</span></div>';
+    capHtml += '<div class="detail-item"><span class="detail-label">窗口缩放</span><span class="detail-value">' + (cap.supportResize ? '支持' : '不支持') + '</span></div>';
+    capHtml += '<div class="detail-item"><span class="detail-label">窗口叠加</span><span class="detail-value">' + (cap.supportOverlay ? '支持' : '不支持') + '</span></div>';
+    capHtml += '<div class="detail-item"><span class="detail-label">最大分辨率</span><span class="detail-value">' + escapeHtml(cap.maxResolution) + '</span></div>';
+    var capInputChannels = [];
+    if (cap.inputChannel1) capInputChannels.push(cap.inputChannel1);
+    if (cap.inputChannel2) capInputChannels.push(cap.inputChannel2);
+    var capOutputChannels = [];
+    if (cap.outputChannel1) capOutputChannels.push(cap.outputChannel1);
+    if (cap.outputChannel2) capOutputChannels.push(cap.outputChannel2);
+    if (cap.outputChannel3) capOutputChannels.push(cap.outputChannel3);
+    capHtml += '<div class="detail-item"><span class="detail-label">输入通道</span><span class="detail-value">' + (capInputChannels.length > 0 ? capInputChannels.join(', ') : '无') + '</span></div>';
+    capHtml += '<div class="detail-item"><span class="detail-label">输出通道</span><span class="detail-value">' + (capOutputChannels.length > 0 ? capOutputChannels.join(', ') : '无') + '</span></div>';
+    $('#deviceCapabilityGrid').innerHTML = capHtml;
+  }).catch(function () {
+    $('#deviceCapabilityGrid').innerHTML = '<div class="detail-loading">获取能力信息失败</div>';
+  });
 }
 
 function closeDeviceDetailModal() {

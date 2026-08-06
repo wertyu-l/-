@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.WindowMapper">
+
+    <resultMap id="WindowMap" type="com.example.demo.entity.ScreenWindow">
+        <id column="id" property="id"/>
+        <result column="window_id" property="windowId"/>
+        <result column="screen_id" property="screenId"/>
+        <result column="device_id" property="deviceId"/>
+        <result column="channel_name" property="channelName"/>
+        <result column="x" property="x"/>
+        <result column="y" property="y"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result column="source_type" property="sourceType"/>
+        <result column="source_url" property="sourceUrl"/>
+        <result column="sync_status" property="syncStatus"/>
+        <result column="degraded" property="degraded"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <resultMap id="WindowVOMap" type="com.example.demo.common.ScreenWindowVO">
+        <result column="window_id" property="windowId"/>
+        <result column="screen_id" property="screenId"/>
+        <result column="device_id" property="deviceId"/>
+        <result column="device_name" property="deviceName"/>
+        <result column="device_category" property="deviceCategory"/>
+        <result column="channel_name" property="channelName"/>
+        <result column="x" property="x"/>
+        <result column="y" property="y"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result column="source_type" property="sourceType"/>
+        <result column="source_url" property="sourceUrl"/>
+        <result column="sync_status" property="syncStatus"/>
+        <result column="degraded" property="degraded"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO SCREEN_WINDOW (window_id, screen_id, device_id, channel_name,
+                                   x, y, width, height, source_type, source_url, sync_status, degraded)
+        VALUES (#{windowId}, #{screenId}, #{deviceId}, #{channelName},
+                #{x}, #{y}, #{width}, #{height}, #{sourceType}, #{sourceUrl}, #{syncStatus}, #{degraded})
+    </insert>
+
+    <select id="findByWindowId" resultMap="WindowMap">
+        SELECT * FROM SCREEN_WINDOW WHERE window_id = #{windowId}
+    </select>
+
+    <select id="findByScreenId" resultMap="WindowVOMap">
+        SELECT sw.window_id, sw.screen_id, sw.device_id, sw.channel_name,
+               sw.x, sw.y, sw.width, sw.height,
+               sw.source_type, sw.source_url, sw.sync_status, sw.degraded,
+               sw.create_time, sw.update_time,
+               d.device_name, d.device_category
+        FROM SCREEN_WINDOW sw
+        LEFT JOIN DEVICE d ON sw.device_id = d.id
+        WHERE sw.screen_id = #{screenId}
+        ORDER BY sw.create_time DESC
+    </select>
+
+    <update id="updatePosition">
+        UPDATE SCREEN_WINDOW
+        SET x = #{x}, y = #{y}, width = #{width}, height = #{height},
+            update_time = CURRENT_TIMESTAMP
+        WHERE window_id = #{windowId}
+    </update>
+
+    <update id="updateSyncStatus">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, update_time = CURRENT_TIMESTAMP
+        WHERE window_id = #{windowId}
+    </update>
+
+    <update id="updateDegraded">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, degraded = #{degraded}, update_time = CURRENT_TIMESTAMP
+        WHERE window_id = #{windowId}
+    </update>
+
+    <delete id="deleteByWindowId">
+        DELETE FROM SCREEN_WINDOW WHERE window_id = #{windowId}
+    </delete>
+
+    <delete id="deleteByScreenId">
+        DELETE FROM SCREEN_WINDOW WHERE screen_id = #{screenId}
+    </delete>
+
+    <select id="findBySyncStatus" resultMap="WindowMap">
+        SELECT * FROM SCREEN_WINDOW
+        WHERE sync_status IN
+        <foreach collection="statuses" item="s" open="(" separator="," close=")">
+            #{s}
+        </foreach>
+    </select>
+
+</mapper>

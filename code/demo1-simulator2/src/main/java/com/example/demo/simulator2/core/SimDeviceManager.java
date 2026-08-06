@@ -11,10 +11,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
- * 模拟设备2 管理器
+ * 模拟设备2 管理器（输入设备，2个输入通道）
  * <p>
  * 一个进程 = 一台设备。设备信息和能力从 H2 数据库加载（自启动自动初始化），
  * 窗口数据也持久化到数据库，进程重启后自动恢复。
+ * <p>
+ * 本设备为输入设备（deviceCategory = "INPUT"），拥有2个输入通道（HDMI-1、HDMI-2），
+ * 窗口绑定到输入通道。
  */
 @Component
 public class SimDeviceManager {
@@ -64,23 +67,38 @@ public class SimDeviceManager {
      * 更新设备能力（内存 + 数据库同步更新）
      */
     public SimDeviceCapability updateDeviceCapability(SimDeviceCapability newCapability) {
-        deviceCapability.setMaxWindows(newCapability.getMaxWindows());
         deviceCapability.setSupportMove(newCapability.isSupportMove());
         deviceCapability.setSupportResize(newCapability.isSupportResize());
         deviceCapability.setSupportOverlay(newCapability.isSupportOverlay());
         deviceCapability.setMaxResolution(newCapability.getMaxResolution());
-        deviceCapability.setOutputChannels(newCapability.getOutputChannels());
+        deviceCapability.setInputChannel1(newCapability.getInputChannel1());
+        deviceCapability.setInputChannel2(newCapability.getInputChannel2());
         repo.updateCapability(deviceCapability);
+        repo.updateDeviceInfoFromCapability(deviceCapability);
+        deviceInfo.setInputChannel1(newCapability.getInputChannel1());
+        deviceInfo.setInputChannel2(newCapability.getInputChannel2());
+        deviceInfo.setMaxResolution(newCapability.getMaxResolution());
         return deviceCapability;
+    }
+
+    /**
+     * 判断 channelName 是否为该设备的有效输入通道名
+     */
+    public boolean isValidInputChannel(String channelName) {
+        if (channelName == null || channelName.isEmpty()) return false;
+        return channelName.equals(deviceInfo.getInputChannel1())
+                || (deviceInfo.getInputChannel2() != null && !deviceInfo.getInputChannel2().isEmpty()
+                    && channelName.equals(deviceInfo.getInputChannel2()));
     }
 
     /**
      * 创建窗口
      * <p>
-     * 校验规则：windowId 不重复 → channel 不重复 → 未超过 maxWindows 上限。
-     * 创建时自动填充默认值和 createTime，写入数据库。
+     * 校验规则：windowId 不重复 → channelName 是有效输入通道。
+     * 输入通道不限制窗口数量，同一通道可以创建多个窗口，无窗口总数上限。
+     * 创建时自动填充默认值、sourceType（根据通道名推断）和 createTime，写入数据库。
      *
-     * @param window 窗口信息（windowId、channel 必填）
+     * @param window 窗口信息（windowId、channelName 必填）
      * @return 创建后的窗口（含自动生成的 createTime），失败返回 null
      */
     public SimWindow createWindow(SimWindow window) {
@@ -88,12 +106,8 @@ public class SimDeviceManager {
         if (repo.findWindowById(window.getWindowId()) != null) {
             return null;
         }
-        // channel 重复校验
-        if (repo.isChannelUsed(window.getChannel())) {
-            return null;
-        }
-        // 窗口数上限校验
-        if (repo.countWindows() >= deviceCapability.getMaxWindows()) {
+        // channelName 有效性校验
+        if (!isValidInputChannel(window.getChannelName())) {
             return null;
         }
         // 默认值
@@ -102,10 +116,27 @@ public class SimDeviceManager {
         if (window.getWidth() == null) window.setWidth(1920);
         if (window.getHeight() == null) window.setHeight(1080);
         if (window.getSourceUrl() == null) window.setSourceUrl("");
+        // 自动生成 sourceType（根据通道名推断）
+        if (window.getSourceType() == null || window.getSourceType().isEmpty()) {
+            window.setSourceType(inferSourceType(window.getChannelName()));
+        }
         // 自动生成创建时间
         window.setCreateTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         repo.insertWindow(window);
         return window;
+    }
+
+    /**
+     * 根据通道名推断信号源类型
+     */
+    private String inferSourceType(String channelName) {
+        if (channelName == null) return "";
+        String upper = channelName.toUpperCase();
+        if (upper.startsWith("HDMI")) return "HDMI";
+        if (upper.startsWith("VGA")) return "VGA";
+        if (upper.startsWith("DP")) return "DP";
+        if (upper.startsWith("SDI")) return "SDI";
+        return "Stream";
     }
 
     /** 查询单个窗口 */

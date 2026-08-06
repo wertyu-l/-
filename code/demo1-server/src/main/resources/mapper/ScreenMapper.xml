@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.ScreenMapper">
+
+    <resultMap id="ScreenMap" type="com.example.demo.entity.Screen">
+        <id column="id" property="id"/>
+        <result column="screen_name" property="screenName"/>
+        <result column="rows_count" property="rowsCount"/>
+        <result column="cols_count" property="colsCount"/>
+        <result column="cell_width" property="cellWidth"/>
+        <result column="cell_height" property="cellHeight"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <resultMap id="CellVOMap" type="com.example.demo.common.CellVO">
+        <id column="c_id" property="id"/>
+        <result column="screen_id" property="screenId"/>
+        <result column="row_index" property="rowIndex"/>
+        <result column="col_index" property="colIndex"/>
+        <result column="device_id" property="deviceId"/>
+        <result column="channel_name" property="channelName"/>
+        <result column="device_name" property="deviceName"/>
+        <result column="device_type" property="deviceType"/>
+        <result column="device_category" property="deviceCategory"/>
+        <result column="online" property="online"/>
+        <result column="base_url" property="baseUrl"/>
+    </resultMap>
+
+    <resultMap id="PageVOMap" type="com.example.demo.common.ScreenPageVO">
+        <id column="id" property="id"/>
+        <result column="screen_name" property="screenName"/>
+        <result column="rows_count" property="rowsCount"/>
+        <result column="cols_count" property="colsCount"/>
+        <result column="cell_width" property="cellWidth"/>
+        <result column="cell_height" property="cellHeight"/>
+        <result column="cell_count" property="cellCount"/>
+        <result column="window_count" property="windowCount"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <resultMap id="CellMap" type="com.example.demo.entity.ScreenCell">
+        <id column="id" property="id"/>
+        <result column="screen_id" property="screenId"/>
+        <result column="row_index" property="rowIndex"/>
+        <result column="col_index" property="colIndex"/>
+        <result column="device_id" property="deviceId"/>
+        <result column="channel_name" property="channelName"/>
+    </resultMap>
+
+    <insert id="insertScreen" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO SCREEN (screen_name, rows_count, cols_count, cell_width, cell_height)
+        VALUES (#{screenName}, #{rowsCount}, #{colsCount}, #{cellWidth}, #{cellHeight})
+    </insert>
+
+    <insert id="insertCells">
+        INSERT INTO SCREEN_CELL (screen_id, row_index, col_index, device_id, channel_name) VALUES
+        <foreach collection="cells" item="cell" separator=",">
+            (#{cell.screenId}, #{cell.rowIndex}, #{cell.colIndex}, #{cell.deviceId}, #{cell.channelName})
+        </foreach>
+    </insert>
+
+    <select id="pageQuery" resultMap="PageVOMap">
+        SELECT s.id, s.screen_name, s.rows_count, s.cols_count, s.cell_width, s.cell_height,
+               s.create_time,
+               (SELECT COUNT(*) FROM SCREEN_CELL WHERE screen_id = s.id) AS cell_count,
+               (SELECT COUNT(*) FROM SCREEN_WINDOW WHERE screen_id = s.id) AS window_count
+        FROM SCREEN s
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND s.screen_name LIKE CONCAT('%', #{keyword}, '%')
+            </if>
+        </where>
+        ORDER BY s.id DESC
+    </select>
+
+    <select id="findById" resultMap="ScreenMap">
+        SELECT * FROM SCREEN WHERE id = #{id}
+    </select>
+
+    <select id="findCellsByScreenId" resultMap="CellVOMap">
+        SELECT sc.id AS c_id, sc.screen_id, sc.row_index, sc.col_index,
+               sc.device_id, sc.channel_name,
+               d.device_name, d.device_type, d.device_category, d.online, d.base_url
+        FROM SCREEN_CELL sc
+        LEFT JOIN DEVICE d ON sc.device_id = d.id
+        WHERE sc.screen_id = #{screenId}
+        ORDER BY sc.row_index, sc.col_index
+    </select>
+
+    <select id="findCellById" resultMap="CellMap">
+        SELECT * FROM SCREEN_CELL WHERE id = #{cellId}
+    </select>
+
+    <update id="updateCellBinding">
+        UPDATE SCREEN_CELL SET device_id = #{deviceId}, channel_name = #{channelName} WHERE id = #{cellId}
+    </update>
+
+    <select id="countDeviceBindings" resultType="int">
+        SELECT COUNT(*) FROM SCREEN_CELL WHERE device_id = #{deviceId}
+    </select>
+
+    <select id="countWindowsByScreenId" resultType="int">
+        SELECT COUNT(*) FROM SCREEN_WINDOW WHERE screen_id = #{screenId}
+    </select>
+
+    <delete id="deleteScreen">
+        DELETE FROM SCREEN WHERE id = #{id}
+    </delete>
+
+</mapper>

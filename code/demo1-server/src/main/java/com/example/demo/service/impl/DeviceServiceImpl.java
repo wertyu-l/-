@@ -4,6 +4,7 @@ import com.example.demo.common.*;
 import com.example.demo.driver.DeviceEndpoint;
 import com.example.demo.driver.RestDeviceDriver;
 import com.example.demo.mapper.DeviceMapper;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 import com.example.demo.service.DeviceDiscoveryService;
@@ -21,6 +22,10 @@ import java.util.List;
 
 /**
  * 设备管理 Service 实现
+ * <p>
+ * 设备类别（deviceCategory）由管控系统根据模拟设备返回的通道信息自动判定：
+ * - 输入设备（INPUT）：inputChannel1 非空 → 拥有输入通道，提供信号源
+ * - 输出设备（OUTPUT）：outputChannel1 或 outputChannel2 非空 → 拥有输出通道，用于大屏绑定
  */
 @Service
 public class DeviceServiceImpl implements DeviceService {
@@ -37,7 +42,7 @@ public class DeviceServiceImpl implements DeviceService {
     /**
      * 手动添加设备
      * <p>
-     * 校验 baseUrl 合法性 → 查重 → 连接模拟设备拉取设备描述信息 → 写入数据库。
+     * 校验 baseUrl 合法性 → 查重 → 连接模拟设备拉取设备信息与能力 → 自动判定设备类别 → 写入数据库。
      *
      * @param baseUrl 设备 REST API 基地址
      * @return 添加后的设备完整信息（含自增 id）
@@ -61,26 +66,52 @@ public class DeviceServiceImpl implements DeviceService {
             throw new RuntimeException("设备已存在: " + baseUrl);
         }
 
-        // 3. 构建 DeviceEndpoint，连接模拟设备拉取设备信息
+        // 3. 构建 DeviceEndpoint，连接模拟设备拉取设备信息与能力
         DeviceEndpoint endpoint = new DeviceEndpoint();
         endpoint.setDeviceType("REST");
         endpoint.setBaseUrl(baseUrl);
 
         SimDeviceInfo info;
+        SimDeviceCapability capability;
         try {
             info = restDeviceDriver.getInfo(endpoint);
+            capability = restDeviceDriver.getCapability(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + baseUrl + "，请检查设备是否在线");
         }
-        if (info == null) {
+        if (info == null || capability == null) {
             throw new RuntimeException("无法连接模拟设备: " + baseUrl + "，请检查设备是否在线");
         }
 
-        // 4. 写入数据库
-        deviceMapper.insert(info, baseUrl);
+        // 4. 自动判定设备类别（若模拟设备未返回 deviceCategory）
+        if (info.getDeviceCategory() == null || info.getDeviceCategory().isEmpty()) {
+            info.setDeviceCategory(determineDeviceCategory(info));
+        }
 
-        // 5. 查询返回（拿自增 id）
+        // 5. 写入数据库
+        deviceMapper.insert(info, capability, baseUrl);
+
+        // 6. 查询返回（拿自增 id）
         return deviceMapper.findByBaseUrl(baseUrl);
+    }
+
+    /**
+     * 自动判定设备类别
+     * <p>
+     * 规则：inputChannel1 非空 → INPUT（输入设备），否则 outputChannel1 或 outputChannel2 非空 → OUTPUT（输出设备），
+     * 都不非空则报错。
+     */
+    private String determineDeviceCategory(SimDeviceInfo info) {
+        boolean hasInput = StringUtils.hasText(info.getInputChannel1());
+        boolean hasOutput = StringUtils.hasText(info.getOutputChannel1())
+                || StringUtils.hasText(info.getOutputChannel2());
+        if (hasInput) {
+            return "INPUT";
+        } else if (hasOutput) {
+            return "OUTPUT";
+        } else {
+            throw new RuntimeException("设备无任何通道，无法添加");
+        }
     }
 
     /**
@@ -121,15 +152,15 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 刷新设备信息（从模拟设备重新拉取并更新数据库）
+     * 刷新设备信息（从模拟设备重新拉取信息与能力并更新数据库）
      *
      * @param id 设备主键
-     * @return 最新的设备描述信息
+     * @return 更新后的设备完整信息（含自增 id、baseUrl 等）
      * @throws RuntimeException 设备不存在或连接失败时抛出
      */
     @Override
     @Transactional
-    public SimDeviceInfo refreshDevice(Long id) {
+    public DevicePageVO refreshDevice(Long id) {
         DevicePageVO device = deviceMapper.findById(id);
         if (device == null) {
             throw new RuntimeException("设备不存在: id=" + id);
@@ -137,17 +168,24 @@ public class DeviceServiceImpl implements DeviceService {
 
         DeviceEndpoint endpoint = buildEndpoint(device);
         SimDeviceInfo info;
+        SimDeviceCapability capability;
         try {
             info = restDeviceDriver.getInfo(endpoint);
+            capability = restDeviceDriver.getCapability(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
         }
-        if (info == null) {
+        if (info == null || capability == null) {
             throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
         }
 
-        deviceMapper.updateDeviceInfo(id, info);
-        return info;
+        // 自动判定设备类别（若模拟设备未返回）
+        if (info.getDeviceCategory() == null || info.getDeviceCategory().isEmpty()) {
+            info.setDeviceCategory(determineDeviceCategory(info));
+        }
+
+        deviceMapper.updateDeviceInfo(id, info, capability);
+        return deviceMapper.findById(id);
     }
 
     /**
@@ -193,11 +231,11 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     /**
-     * 获取设备基本信息（查数据库）
+     * 获取设备基本信息（实时查询模拟设备）
      *
      * @param id 设备主键
      * @return 设备描述信息
-     * @throws RuntimeException 设备不存在时抛出
+     * @throws RuntimeException 设备不存在或连接失败时抛出
      */
     @Override
     public SimDeviceInfo getDeviceInfo(Long id) {
@@ -205,15 +243,26 @@ public class DeviceServiceImpl implements DeviceService {
         if (device == null) {
             throw new RuntimeException("设备不存在: id=" + id);
         }
-        return device;
+
+        DeviceEndpoint endpoint = buildEndpoint(device);
+        SimDeviceInfo info;
+        try {
+            info = restDeviceDriver.getInfo(endpoint);
+        } catch (Exception e) {
+            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
+        }
+        if (info == null) {
+            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
+        }
+        return info;
     }
 
     /**
-     * 获取设备运行状态（查数据库）
+     * 获取设备运行状态（实时查询模拟设备）
      *
      * @param id 设备主键
      * @return 设备运行状态（在线状态、窗口数、启动时间）
-     * @throws RuntimeException 设备不存在时抛出
+     * @throws RuntimeException 设备不存在或连接失败时抛出
      */
     @Override
     public SimDeviceStatus getDeviceStatus(Long id) {
@@ -222,11 +271,45 @@ public class DeviceServiceImpl implements DeviceService {
             throw new RuntimeException("设备不存在: id=" + id);
         }
 
-        SimDeviceStatus status = new SimDeviceStatus();
-        status.setOnline(device.getOnline() != null && device.getOnline() == 1);
-        status.setWindowCount(0);
-        status.setUptime("");
+        DeviceEndpoint endpoint = buildEndpoint(device);
+        SimDeviceStatus status;
+        try {
+            status = restDeviceDriver.getStatus(endpoint);
+        } catch (Exception e) {
+            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
+        }
+        if (status == null) {
+            throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
+        }
         return status;
+    }
+
+    /**
+     * 获取设备能力（从数据库 DEVICE 表返回能力字段）
+     *
+     * @param id 设备主键
+     * @return 设备能力
+     * @throws RuntimeException 设备不存在时抛出
+     */
+    @Override
+    public SimDeviceCapability getDeviceCapability(Long id) {
+        DevicePageVO device = deviceMapper.findById(id);
+        if (device == null) {
+            throw new RuntimeException("设备不存在: id=" + id);
+        }
+
+        SimDeviceCapability capability = new SimDeviceCapability();
+        capability.setMaxWindows(device.getMaxWindows() != null ? device.getMaxWindows() : 0);
+        capability.setSupportMove(device.getSupportMove() != null && device.getSupportMove() == 1);
+        capability.setSupportResize(device.getSupportResize() != null && device.getSupportResize() == 1);
+        capability.setSupportOverlay(device.getSupportOverlay() != null && device.getSupportOverlay() == 1);
+        capability.setMaxResolution(device.getMaxResolution());
+        capability.setInputChannel1(device.getInputChannel1());
+        capability.setInputChannel2(device.getInputChannel2());
+        capability.setOutputChannel1(device.getOutputChannel1());
+        capability.setOutputChannel2(device.getOutputChannel2());
+        capability.setOutputChannel3(device.getOutputChannel3());
+        return capability;
     }
 
     /**

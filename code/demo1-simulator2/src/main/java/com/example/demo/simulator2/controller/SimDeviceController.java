@@ -12,11 +12,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 模拟设备2 REST 接口
+ * 模拟设备2 REST 接口（输入设备，2个输入通道：HDMI-1、HDMI-2）
  * <p>
  * 路径前缀 /simulator，模拟真实硬件设备暴露的 HTTP API。
  * 一个进程 = 一台设备，接口路径不再携带 deviceId。
  * 管控系统通过 RestDeviceDriver 调用这些接口来操作模拟设备。
+ * <p>
+ * 本设备为输入设备（deviceCategory = "INPUT"），窗口绑定到输入通道。
  */
 @RestController
 @RequestMapping("/simulator")
@@ -25,7 +27,7 @@ public class SimDeviceController {
     @Autowired
     private SimDeviceManager deviceManager;
 
-    /** 获取设备基本信息（名称、型号、序列号、通道数、分辨率等） */
+    /** 获取设备基本信息（名称、型号、序列号、通道名、分辨率等） */
     @GetMapping("/device/info")
     public Result<SimDeviceInfo> getDeviceInfo() {
         return Result.success(deviceManager.getDeviceInfo());
@@ -52,29 +54,29 @@ public class SimDeviceController {
     /**
      * 创建窗口
      * <p>
-     * 必填字段：windowId、channel。
-     * 可选字段：x、y、width、height、sourceType、sourceUrl（未填使用默认值）。
-     * 失败场景：windowId 重复、channel 重复、已达最大窗口数。
+     * 必填字段：windowId、channelName。
+     * 可选字段：x、y、width、height（未填使用默认值）。
+     * sourceType 和 sourceUrl 由设备根据通道配置自动返回。
+     * 失败场景：windowId 为空/重复、channelName 无效/重复、已达最大窗口数。
      */
     @PostMapping("/device/window")
     public Result<SimWindow> createWindow(@RequestBody SimWindow window) {
         if (window.getWindowId() == null || window.getWindowId().isEmpty()) {
             return Result.error("窗口ID不能为空");
         }
-        if (window.getChannel() <= 0) {
-            return Result.error("通道编号必须大于0");
+        if (window.getChannelName() == null || window.getChannelName().isEmpty()) {
+            return Result.error("通道名不能为空");
+        }
+        // 校验 channelName 是否为有效的设备输入通道名
+        if (!deviceManager.isValidInputChannel(window.getChannelName())) {
+            return Result.error("通道名无效: " + window.getChannelName());
         }
         if (deviceManager.getWindow(window.getWindowId()) != null) {
             return Result.error("窗口已存在: " + window.getWindowId());
         }
-        for (SimWindow w : deviceManager.getWindows()) {
-            if (w.getChannel() == window.getChannel()) {
-                return Result.error("通道已被占用: " + window.getChannel());
-            }
-        }
         SimWindow created = deviceManager.createWindow(window);
         if (created == null) {
-            return Result.error("窗口数量已达上限: " + deviceManager.getDeviceCapability().getMaxWindows());
+            return Result.error("窗口ID已存在: " + window.getWindowId());
         }
         return Result.success(created);
     }

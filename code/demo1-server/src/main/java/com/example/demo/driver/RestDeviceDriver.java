@@ -1,6 +1,7 @@
 package com.example.demo.driver;
 
 import com.example.demo.common.Result;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 import com.example.demo.model.SimWindow;
@@ -11,6 +12,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
 
 /**
  * REST 设备驱动实现
@@ -42,6 +45,23 @@ public class RestDeviceDriver implements DeviceDriver {
         ResponseEntity<Result<SimDeviceInfo>> response = restTemplate.exchange(
                 url, HttpMethod.GET, null,
                 new ParameterizedTypeReference<Result<SimDeviceInfo>>() {});
+        if (response.getBody() != null && response.getBody().getCode() == 1) {
+            return response.getBody().getData();
+        }
+        return null;
+    }
+
+    /**
+     * 获取设备能力
+     * <p>
+     * 请求 GET {baseUrl}/simulator/device/capability
+     */
+    @Override
+    public SimDeviceCapability getCapability(DeviceEndpoint endpoint) {
+        String url = endpoint.getBaseUrl() + "/simulator/device/capability";
+        ResponseEntity<Result<SimDeviceCapability>> response = restTemplate.exchange(
+                url, HttpMethod.GET, null,
+                new ParameterizedTypeReference<Result<SimDeviceCapability>>() {});
         if (response.getBody() != null && response.getBody().getCode() == 1) {
             return response.getBody().getData();
         }
@@ -84,6 +104,24 @@ public class RestDeviceDriver implements DeviceDriver {
     }
 
     /**
+     * 更新窗口位置/大小
+     * <p>
+     * 请求 PUT {baseUrl}/simulator/device/window/{windowId}
+     */
+    @Override
+    public Result<SimWindow> updateWindow(DeviceEndpoint endpoint, String windowId, SimWindow update) {
+        String url = endpoint.getBaseUrl() + "/simulator/device/window/" + windowId;
+        HttpEntity<SimWindow> request = new HttpEntity<>(update);
+        ResponseEntity<Result<SimWindow>> response = restTemplate.exchange(
+                url, HttpMethod.PUT, request,
+                new ParameterizedTypeReference<Result<SimWindow>>() {});
+        if (response.getBody() != null) {
+            return response.getBody();
+        }
+        return Result.error("请求失败");
+    }
+
+    /**
      * 关闭窗口
      * <p>
      * 请求 DELETE {baseUrl}/simulator/device/window/{windowId}
@@ -98,6 +136,23 @@ public class RestDeviceDriver implements DeviceDriver {
             return response.getBody();
         }
         return Result.error("请求失败");
+    }
+
+    /**
+     * 查询设备所有窗口
+     * <p>
+     * 请求 GET {baseUrl}/simulator/device/windows
+     */
+    @Override
+    public List<SimWindow> getWindows(DeviceEndpoint endpoint) {
+        String url = endpoint.getBaseUrl() + "/simulator/device/windows";
+        ResponseEntity<Result<List<SimWindow>>> response = restTemplate.exchange(
+                url, HttpMethod.GET, null,
+                new ParameterizedTypeReference<Result<List<SimWindow>>>() {});
+        if (response.getBody() != null && response.getBody().getCode() == 1) {
+            return response.getBody().getData();
+        }
+        return null;
     }
 
 }

@@ -12,7 +12,7 @@ import lombok.Data;
 public class WindowCommand {
 
     private String windowId;       // 窗口唯一标识
-    private int channel;           // 绑定的输出通道编号，从 1 开始
+    private String channelName;    // 绑定的输入通道名称，必须是设备已定义的输入通道名之一
     private Integer x;             // 窗口左上角 X 坐标
     private Integer y;             // 窗口左上角 Y 坐标
     private Integer width;         // 窗口宽度（像素）

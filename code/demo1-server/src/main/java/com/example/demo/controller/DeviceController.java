@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.common.*;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 import com.example.demo.service.DeviceService;
@@ -127,15 +128,30 @@ public class DeviceController {
     }
 
     /**
-     * 刷新设备信息（从模拟设备重新拉取并更新数据库）
+     * 刷新设备信息（从模拟设备重新拉取信息与能力并更新数据库）
      *
      * @param id 设备主键
      */
     @PutMapping("/{id}/refresh")
-    public Result<SimDeviceInfo> refreshDevice(@PathVariable Long id) {
+    public Result<DevicePageVO> refreshDevice(@PathVariable Long id) {
         try {
-            SimDeviceInfo info = deviceService.refreshDevice(id);
-            return Result.success(info);
+            DevicePageVO vo = deviceService.refreshDevice(id);
+            return Result.success(vo);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取设备能力
+     *
+     * @param id 设备主键
+     */
+    @GetMapping("/{id}/capability")
+    public Result<SimDeviceCapability> getDeviceCapability(@PathVariable Long id) {
+        try {
+            SimDeviceCapability capability = deviceService.getDeviceCapability(id);
+            return Result.success(capability);
         } catch (RuntimeException e) {
             return Result.error(e.getMessage());
         }

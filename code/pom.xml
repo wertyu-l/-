@@ -23,6 +23,8 @@
         <module>demo1-server</module>
         <module>demo1-simulator</module>
         <module>demo1-simulator2</module>
+        <module>demo1-simulator3</module>
+        <module>demo1-simulator4</module>
     </modules>
 
     <properties>

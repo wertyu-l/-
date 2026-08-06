@@ -8,13 +8,20 @@ REST 模拟设备是异构硬件设备管控系统中的**独立 Spring Boot 程
 
 **核心设计：一个端口 = 一台设备。** 如需模拟多台设备，启动多个进程并绑定不同端口即可。
 
+
+> **设备类别说明：** 模拟设备分为两类，由 `deviceCategory` 字段标识（`INPUT`/`OUTPUT`）：
+> - **输入设备（`deviceCategory = "INPUT"`）：** 拥有输入通道，负责提供信号源。**窗口相关接口（创建/关闭/查询/更新窗口）仅对输入设备有意义。**
+> - **输出设备（`deviceCategory = "OUTPUT"`）：** 拥有输出通道，用于大屏绑定显示。**输出设备不存在窗口概念，不涉及窗口操作。**
 ## 2. 项目结构
 
-模拟设备是独立的 Spring Boot 程序，位于 `demo1-simulator` 模块，数据模型与管控系统共享 `demo1-common`。
+模拟设备是独立的 Spring Boot 程序，共有 4 个模拟器模块，数据模型与管控系统共享 `demo1-common`。
 
 ```
-demo1-simulator/                        ← 模拟设备（默认端口 8086，每进程一台设备）
-└── src/main/java/com/example/demo/simulator/
+demo1-simulator/                        ← 模拟设备1（端口 8086，输入设备，1个输入通道）
+demo1-simulator2/                       ← 模拟设备2（端口 8087，输入设备，2个输入通道）
+demo1-simulator3/                       ← 模拟设备3（端口 8088，输出设备，2个输出通道）
+demo1-simulator4/                       ← 模拟设备4（端口 8089，输出设备，2个输出通道）
+└── src/main/java/com/example/demo/simulator{2,3,4}/
     ├── controller/
     │   └── SimDeviceController.java    ← REST 接口层
     ├── core/
@@ -23,7 +30,7 @@ demo1-simulator/                        ← 模拟设备（默认端口 8086，�
     └── server/
         └── DiscoveryListener.java      ← UDP 设备发现监听
     ├── main/resources/
-    │   ├── application.yaml            ← 含 H2 数据源配置
+    │   ├── application.yaml            ← 含 H2 数据源 + 端口 + 发现端口配置
     │   ├── schema.sql                  ← 建表脚本（自启动执行）
     │   └── data.sql                    ← 初始数据（仅首次导入）
 
@@ -36,6 +43,7 @@ demo1-common/                           ← 共享数据模型
 ```
 
 > 管控系统（demo1-server）通过 `DeviceDriver` 接口调用模拟设备，具体看设备管理模块设计文档。
+> 输入设备拥有窗口操作 API（创建/关闭/查询/更新窗口），输出设备不涉及窗口操作。
 
 ## 3. 数据模型
 
@@ -49,6 +57,7 @@ demo1-common/                           ← 共享数据模型
 | model | String | 设备型号，如 `DS-D2055NH-A` |
 | serialNumber | String | 序列号 |
 | inputChannel1 | String | 输入通道1名称，如 `HDMI-1`，为空表示无该通道 |
+| inputChannel2 | String | 输入通道2名称，如 `HDMI-2`，为空表示无该通道 |
 | outputChannel1 | String | 输出通道1名称，如 `OUT-1`，为空表示无该通道 |
 | outputChannel2 | String | 输出通道2名称，如 `OUT-2`，为空表示无该通道 |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
@@ -70,12 +79,12 @@ demo1-common/                           ← 共享数据模型
 
 ### 3.3 SimWindow — 窗口信息
 
-窗口是管控系统下发到模拟设备的内容展示单元，每个窗口绑定到设备的某个输出通道。
+窗口是管控系统下发到模拟设备的内容展示单元，每个窗口绑定到设备的某个输入通道。窗口操作仅对输入设备有意义。
 
 | 字段 | 类型 | 必填 | 不可重复 | 说明 |
 |------|------|:--:|:----:|------|
 | windowId | String | 是 | 是 | 窗口唯一标识，由管控系统生成，全局唯一 |
-| channelName | String | 是 | 是 | 绑定的输出通道名称，必须是该设备已定义的输出通道名之一 |
+| channelName | String | 是 | 否 | 绑定的输入通道名称，必须是该设备已定义的输入通道名之一。同一输入通道可以有多个窗口 |
 | x | int | 否 | 否 | 窗口左上角 X 坐标，默认 0 |
 | y | int | 否 | 否 | 窗口左上角 Y 坐标，默认 0 |
 | width | int | 否 | 否 | 窗口宽度（像素），默认 1920 |
@@ -90,14 +99,18 @@ demo1-common/                           ← 共享数据模型
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| maxWindows | int | 输出设备最大窗口数量，大屏级别校验；输入设备忽略此字段 |
+| maxWindows | int | 最大窗口数量，用于设备级别窗口总数校验 |
 | supportMove | boolean | 是否支持窗口移动 |
 | supportResize | boolean | 是否支持窗口缩放 |
 | supportOverlay | boolean | 是否支持窗口叠加 |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
+| inputChannel1 | String | 输入通道1名称 |
+| inputChannel2 | String | 输入通道2名称 |
+| outputChannel1 | String | 输出通道1名称 |
+| outputChannel2 | String | 输出通道2名称 |
 
-> **注意：** `maxWindows` 仅对输出设备有意义，输入设备无窗口数量限制。
-> `inputChannel1`/`outputChannel1`/`outputChannel2` 字段含义同上，按设备类型二选一。
+> **注意：** 能力表中的通道名和 `maxResolution` 与设备信息表共享，更新能力时会自动同步到设备信息表。
+> `inputChannel1`/`inputChannel2`/`outputChannel1`/`outputChannel2` 字段含义同上，按设备类型二选一。
 
 
 ## 4. 接口列表
@@ -127,11 +140,13 @@ GET http://192.168.1.100:8086/simulator/device/info
   "data": {
     "deviceName": "REST-Node-01",
     "deviceType": "REST",
+    "deviceCategory": "INPUT",
     "model": "DS-D2055NH-A",
     "serialNumber": "SN-REST-2024-0001",
     "inputChannel1": "HDMI-1",
-    "outputChannel1": "OUT-1",
-    "outputChannel2": "OUT-2",
+    "inputChannel2": "",
+    "outputChannel1": "",
+    "outputChannel2": "",
     "maxResolution": "1920x1080"
   }
 }
@@ -190,7 +205,8 @@ GET http://192.168.1.100:8086/simulator/device/capability
     "supportOverlay": true,
     "maxResolution": "1920x1080",
     "inputChannel1": "HDMI-1",
-    "outputChannel1": "OUT-1",
+    "inputChannel2": "",
+    "outputChannel1": "",
     "outputChannel2": ""
   }
 }
@@ -215,7 +231,8 @@ Content-Type: application/json
   "supportOverlay": false,
   "maxResolution": "1920x1080",
   "inputChannel1": "HDMI-1",
-  "outputChannel1": "OUT-1",
+  "inputChannel2": "",
+  "outputChannel1": "",
   "outputChannel2": ""
 }
 ```
@@ -233,7 +250,8 @@ Content-Type: application/json
     "supportOverlay": false,
     "maxResolution": "1920x1080",
     "inputChannel1": "HDMI-1",
-    "outputChannel1": "OUT-1",
+    "inputChannel2": "",
+    "outputChannel1": "",
     "outputChannel2": ""
   }
 }
@@ -241,7 +259,7 @@ Content-Type: application/json
 
 ### 4.5 创建窗口
 
-向设备下发创建窗口命令。创建前会校验：输出通道下窗口总数是否超过 `maxWindows` 限制（输入通道不限制），以及 `channelName` 是否为该设备有效的输出通道名。`sourceType` 和 `sourceUrl` 由设备根据通道配置自动返回，无需调用方传入。
+向设备下发创建窗口命令。创建前会校验：`channelName` 是否为该设备有效的输入通道名、窗口总数是否超过 `maxWindows` 限制。输入通道不限制窗口数量，同一通道可创建多个窗口。`sourceType` 和 `sourceUrl` 由设备根据通道配置自动返回，无需调用方传入。
 
 ```
 POST /simulator/device/window
@@ -389,7 +407,7 @@ GET http://192.168.1.100:8086/simulator/device/windows
     },
     {
       "windowId": "win-002",
-      "channelName": "OUT-2",
+      "channelName": "HDMI-2",
       "x": 960,
       "y": 0,
       "width": 960,
@@ -547,9 +565,11 @@ Content-Type: application/json
 | 参数 | 值 |
 |------|-----|
 | 传输协议 | UDP |
-| 监听端口 | 9999 |
+| 监听端口 | 每台模拟设备独立 UDP 端口（9999 / 9998 / 9997 / 9996） |
 | 广播地址 | 255.255.255.255 |
 | 序列化格式 | JSON |
+
+> 由于多台模拟设备进程可能运行在同一台机器上，每台设备绑定独立的 UDP 发现端口以避免端口冲突。管控系统向所有端口广播搜索请求。
 
 ### 5.2 请求格式
 
@@ -594,49 +614,89 @@ Content-Type: application/json
 
 ### 5.5 实现说明
 
-`DiscoveryListener` 在模拟设备启动时通过 `@PostConstruct` 自动开启守护线程，监听 UDP 9999 端口。收到 `{"action":"discovery"}` 时，构造仅含 `baseUrl` 的 JSON 回复并原路返回。
+`DiscoveryListener` 在模拟设备启动时通过 `@PostConstruct` 自动开启守护线程，监听配置的 UDP 端口（由 `application.yaml` 中的 `discovery.port` 指定）。收到 `{"action":"discovery"}` 时，构造仅含 `baseUrl` 的 JSON 回复并原路返回。
 
 纯 JDK 实现，无需引入额外依赖（`java.net.DatagramSocket` + `DatagramPacket`）。
+
+管控系统通过 `discovery.ports` 配置向所有模拟设备的 UDP 端口广播搜索请求。当前配置为 `9999, 9998, 9997, 9996`。
 
 ---
 
 ## 6. 默认设备
 
-模拟设备进程启动后，自动初始化 **1 台**默认设备。管控系统启动后即可直接查询，无需手动创建。
+系统提供 4 台模拟设备，每台设备进程启动后自动初始化。管控系统启动后即可直接查询，无需手动创建。
 
-### 6.1 设备信息（SimDeviceInfo）
+### 6.1 模拟设备1 — 输入设备（端口 8086，UDP 9999）
+
+**设备信息（SimDeviceInfo）**
 
 | 字段 | 值 |
 |------|-----|
 | deviceName | REST-Node-01 |
 | deviceType | REST |
+| deviceCategory | INPUT |
 | model | DS-D2055NH-A |
 | serialNumber | SN-REST-2024-0001 |
 | inputChannel1 | HDMI-1 |
-| outputChannel1 | OUT-1 |
-| outputChannel2 | OUT-2 |
+| inputChannel2 | |
+| outputChannel1 | |
+| outputChannel2 | |
 | maxResolution | 1920x1080 |
 
-### 6.2 设备状态（SimDeviceStatus）
+**设备状态（SimDeviceStatus）**：online=true, windowCount=0, uptime=进程启动时间
+
+**设备能力（SimDeviceCapability）**：maxWindows=4, supportMove/Resize/Overlay=true, maxResolution=1920x1080, inputChannel1=HDMI-1
+
+### 6.2 模拟设备2 — 输入设备（端口 8087，UDP 9998）
 
 | 字段 | 值 |
 |------|-----|
-| online | true |
-| windowCount | 0 |
-| uptime | 进程启动时间，格式 `yyyy-MM-dd HH:mm:ss` |
-
-### 6.3 设备能力（SimDeviceCapability）
-
-| 字段 | 值 |
-|------|-----|
-| maxWindows | 4 |
-| supportMove | true |
-| supportResize | true |
-| supportOverlay | true |
-| maxResolution | 1920x1080 |
+| deviceName | REST-Node-02 |
+| deviceType | REST |
+| deviceCategory | INPUT |
+| model | DS-D2055NH-B |
+| serialNumber | SN-REST-2024-0002 |
 | inputChannel1 | HDMI-1 |
+| inputChannel2 | HDMI-2 |
+| outputChannel1 | |
+| outputChannel2 | |
+| maxResolution | 1920x1080 |
+
+> 能力、状态与设备1相同，inputChannel2=HDMI-2。
+
+### 6.3 模拟设备3 — 输出设备（端口 8088，UDP 9997）
+
+| 字段 | 值 |
+|------|-----|
+| deviceName | REST-Node-03 |
+| deviceType | REST |
+| deviceCategory | OUTPUT |
+| model | DS-D2055NH-C |
+| serialNumber | SN-REST-2024-0003 |
+| inputChannel1 | |
+| inputChannel2 | |
 | outputChannel1 | OUT-1 |
 | outputChannel2 | OUT-2 |
+| maxResolution | 1920x1080 |
+
+> 输出设备不涉及窗口操作，无窗口 API。
+
+### 6.4 模拟设备4 — 输出设备（端口 8089，UDP 9996）
+
+| 字段 | 值 |
+|------|-----|
+| deviceName | REST-Node-04 |
+| deviceType | REST |
+| deviceCategory | OUTPUT |
+| model | DS-D2055NH-D |
+| serialNumber | SN-REST-2024-0004 |
+| inputChannel1 | |
+| inputChannel2 | |
+| outputChannel1 | OUT-1 |
+| outputChannel2 | OUT-2 |
+| maxResolution | 1920x1080 |
+
+> 输出设备不涉及窗口操作，无窗口 API。
 
 
 ---
@@ -659,6 +719,8 @@ Content-Type: application/json
 |------|------|
 | demo1-simulator（端口 8086） | `./data/simulator1.mv.db` |
 | demo1-simulator2（端口 8087） | `./data/simulator2.mv.db` |
+| demo1-simulator3（端口 8088） | `./data/simulator3.mv.db` |
+| demo1-simulator4（端口 8089） | `./data/simulator4.mv.db` |
 
 **自启动初始化：** `application.yaml` 中配置 `spring.sql.init.mode: always`，启动时自动执行 `schema.sql`（`CREATE TABLE IF NOT EXISTS`）和 `data.sql`（`INSERT ... WHERE NOT EXISTS` 仅首次插入）。
 
@@ -671,9 +733,11 @@ Content-Type: application/json
 | id | BIGINT | 主键，自增 |
 | device_name | VARCHAR(200) | 设备名称，如 `REST-Node-01` |
 | device_type | VARCHAR(50) | 设备类型，默认 `REST` |
+| device_category | VARCHAR(20) | 设备类别，`INPUT`=输入设备，`OUTPUT`=输出设备 |
 | model | VARCHAR(100) | 设备型号 |
 | serial_number | VARCHAR(100) | 序列号 |
 | input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
+| input_channel_2 | VARCHAR(100) | 输入通道2名称，为空表示无该通道 |
 | output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
 | output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
@@ -689,6 +753,7 @@ Content-Type: application/json
 | support_overlay | BOOLEAN | 是否支持窗口叠加 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
 | input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
+| input_channel_2 | VARCHAR(100) | 输入通道2名称，为空表示无该通道 |
 | output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
 | output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
 
@@ -697,7 +762,7 @@ Content-Type: application/json
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | window_id | VARCHAR(100) | 主键，窗口唯一标识 |
-| channel_name | VARCHAR(100) | 绑定的输出通道名称 |
+| channel_name | VARCHAR(100) | 绑定的输入通道名称 |
 | x | INT | 窗口 X 坐标，默认 0 |
 | y | INT | 窗口 Y 坐标，默认 0 |
 | width | INT | 窗口宽度，默认 1920 |
@@ -706,6 +771,8 @@ Content-Type: application/json
 | source_url | VARCHAR(500) | 信号源地址 |
 | create_time | VARCHAR(20) | 窗口创建时间 |
 
+> 窗口表仅在输入设备中存在，输出设备不涉及窗口操作，无此表。
+
 ### 7.3 与管控系统的关系
 
 模拟设备与管控系统是**两个独立进程**，各自启动：
@@ -713,7 +780,10 @@ Content-Type: application/json
 | 模块 | 端口 | 说明 |
 |------|------|------|
 | demo1-server（管控系统） | 8085 | 通过 `mvn spring-boot:run` 启动 |
-| demo1-simulator（模拟设备） | 8086（可自定义） | 每台设备一个进程，端口不同 |
+| demo1-simulator（输入设备1） | 8086 | 1个输入通道，有窗口 API |
+| demo1-simulator2（输入设备2） | 8087 | 2个输入通道，有窗口 API |
+| demo1-simulator3（输出设备1） | 8088 | 2个输出通道，无窗口 API |
+| demo1-simulator4（输出设备2） | 8089 | 2个输出通道，无窗口 API |
 
 管控系统通过 HTTP 请求调用本接口文档中的 API，模拟设备离线时 HTTP 请求失败，管控系统即可检测到设备下线。
 
@@ -723,28 +793,33 @@ Content-Type: application/json
 
 ### 7.4 多设备模拟
 
-**一个进程 = 一台设备**，如需模拟多台设备，启动多个进程并绑定不同端口：
+系统提供 4 个独立的模拟器模块，**一个进程 = 一台设备**：
 
 ```bash
-# 设备1：端口 8086
-java -jar demo1-simulator.jar --server.port=8086
+# 输入设备1：端口 8086，1个输入通道 HDMI-1
+java -jar demo1-simulator.jar
 
-# 设备2：端口 8087
-java -jar demo1-simulator.jar --server.port=8087
+# 输入设备2：端口 8087，2个输入通道 HDMI-1、HDMI-2
+java -jar demo1-simulator2.jar
 
-# 设备3：端口 8088
-java -jar demo1-simulator.jar --server.port=8088
+# 输出设备3：端口 8088，2个输出通道 OUT-1、OUT-2
+java -jar demo1-simulator3.jar
+
+# 输出设备4：端口 8089，2个输出通道 OUT-1、OUT-2
+java -jar demo1-simulator4.jar
 ```
 
-管控系统分别向 `http://192.168.1.100:8086`、`http://192.168.1.100:8087`、`http://192.168.1.100:8088` 添加设备，每个地址对应一台独立设备。
+管控系统分别向对应地址添加设备即可。
 
-| 端口 | 说明 |
-|------|------|
-| 8086 | 进程 1，独立设备 |
-| 8087 | 进程 2，独立设备 |
-| 8088 | 进程 3，独立设备 |
+| 模块 | 端口 | UDP发现 | 类别 | 通道 |
+|------|:--:|:--:|:--:|------|
+| demo1-simulator | 8086 | 9999 | INPUT | 1个输入：HDMI-1 |
+| demo1-simulator2 | 8087 | 9998 | INPUT | 2个输入：HDMI-1, HDMI-2 |
+| demo1-simulator3 | 8088 | 9997 | OUTPUT | 2个输出：OUT-1, OUT-2 |
+| demo1-simulator4 | 8089 | 9996 | OUTPUT | 2个输出：OUT-1, OUT-2 |
 
 > 每个进程内的设备信息完全独立，管控系统通过 `baseUrl` 区分不同设备。
+> 如需模拟更多同类型设备，可复制任一模拟器模块，修改 `application.yaml` 中的端口和 UDP 发现端口即可。
 
 ### 7.5 统一返回格式
 

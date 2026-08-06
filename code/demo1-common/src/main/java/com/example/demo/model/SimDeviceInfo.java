@@ -7,15 +7,24 @@ import lombok.Data;
  * <p>
  * 一个进程 = 一台设备，不再需要 deviceId 字段。
  * baseUrl（含端口）即设备唯一标识，由管控系统的 DeviceEndpoint 管理。
+ * <p>
+ * 设备分为两类，由 deviceCategory 字段标识（INPUT/OUTPUT）：
+ * - 输入设备（INPUT）：拥有输入通道，负责提供信号源。窗口相关操作仅对输入设备有意义。
+ * - 输出设备（OUTPUT）：拥有输出通道，用于大屏绑定显示。输出设备不存在窗口概念。
  */
 @Data
 public class SimDeviceInfo {
 
-    private String deviceName;     // 设备名称，如 REST-Node-01
-    private String deviceType;     // 设备类型，当前为 REST
-    private String model;          // 设备型号，如 DS-D2055NH-A
-    private String serialNumber;   // 序列号
-    private int outputChannels;    // 输出通道数
-    private String maxResolution;  // 最大分辨率，如 1920x1080
+    private String deviceName;      // 设备名称，如 REST-Node-01
+    private String deviceType;      // 设备类型，当前为 REST
+    private String deviceCategory;  // 设备类别：INPUT=输入设备，OUTPUT=输出设备
+    private String model;           // 设备型号，如 DS-D2055NH-A
+    private String serialNumber;    // 序列号
+    private String inputChannel1;   // 输入通道1名称，如 HDMI-1，为空表示无该通道
+    private String inputChannel2;   // 输入通道2名称，为空表示无该通道
+    private String outputChannel1;  // 输出通道1名称，如 OUT-1，为空表示无该通道
+    private String outputChannel2;  // 输出通道2名称，如 OUT-2，为空表示无该通道
+    private String outputChannel3;  // 输出通道3名称，如 OUT-3，为空表示无该通道
+    private String maxResolution;   // 最大分辨率，如 1920x1080
 
 }

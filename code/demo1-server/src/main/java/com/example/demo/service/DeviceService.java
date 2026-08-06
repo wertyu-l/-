@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.common.*;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 
@@ -35,12 +36,12 @@ public interface DeviceService {
     void setEnabled(Long id, int enabled);
 
     /**
-     * 刷新设备信息（从模拟设备重新拉取并更新数据库）
+     * 刷新设备信息（从模拟设备重新拉取信息与能力并更新数据库）
      *
      * @param id 设备主键
-     * @return 最新的设备描述信息
+     * @return 更新后的设备完整信息
      */
-    SimDeviceInfo refreshDevice(Long id);
+    DevicePageVO refreshDevice(Long id);
 
     /**
      * 更新所有设备在线状态（心跳检测）
@@ -61,6 +62,11 @@ public interface DeviceService {
      * 获取设备运行状态（实时查询模拟设备）
      */
     SimDeviceStatus getDeviceStatus(Long id);
+
+    /**
+     * 获取设备能力（从数据库 DEVICE 表返回能力字段）
+     */
+    SimDeviceCapability getDeviceCapability(Long id);
 
     /**
      * UDP 广播搜索设备

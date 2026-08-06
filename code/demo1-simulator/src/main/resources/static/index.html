@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REST-Node-01 — 设备管理</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a73e8,#1557b0);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:20px;font-weight:600}
+.header .badge{background:rgba(255,255,255,.2);padding:4px 12px;border-radius:12px;font-size:13px}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+.panel{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:20px;overflow:hidden}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eee;background:#fafbfc}
+.panel-header h2{font-size:16px;font-weight:600}
+.panel-body{padding:20px}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;transition:all .2s}
+.btn-primary{background:#1a73e8;color:#fff}
+.btn-primary:hover{background:#1557b0}
+.btn-outline{background:#fff;color:#1a73e8;border:1px solid #1a73e8}
+.btn-outline:hover{background:#e8f0fe}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.info-item{display:flex;flex-direction:column;padding:10px 14px;background:#f8f9fa;border-radius:6px}
+.info-label{font-size:12px;color:#888;margin-bottom:4px}
+.info-value{font-size:14px;font-weight:500;word-break:break-all}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:16px}
+.form-group{display:flex;flex-direction:column}
+.form-group label{font-size:12px;color:#666;margin-bottom:4px}
+.form-group input,.form-group select{padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;transition:border .2s}
+.form-group input:focus,.form-group select:focus{border-color:#1a73e8;outline:none}
+.form-group input:disabled,.form-group select:disabled{background:#f5f5f5;color:#999}
+.form-actions{display:flex;gap:8px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 12px;background:#f8f9fa;font-size:12px;color:#888;border-bottom:2px solid #eee}
+td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
+.empty-state{text-align:center;padding:40px 20px;color:#999}
+.toast{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:6px;color:#fff;font-size:14px;z-index:999;animation:slideIn .3s ease}
+.toast-success{background:#0f9d58}
+.toast-error{background:#d93025}
+@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>REST-Node-01</h1>
+  <span class="badge">输入设备 · 端口 8086</span>
+</div>
+
+<div class="container">
+
+  <!-- 设备信息 -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>设备信息</h2>
+      <button class="btn btn-outline btn-sm" onclick="loadDeviceInfo()">刷新</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-grid" id="deviceInfo"></div>
+    </div>
+  </div>
+
+  <!-- 设备能力 -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>设备能力</h2>
+      <div class="form-actions">
+        <button class="btn btn-outline btn-sm" id="capEditBtn" onclick="toggleEdit()">编辑</button>
+        <button class="btn btn-primary btn-sm" id="capSaveBtn" onclick="saveCapability()" style="display:none">保存</button>
+        <button class="btn btn-outline btn-sm" id="capCancelBtn" onclick="cancelEdit()" style="display:none">取消</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="form-grid" id="capabilityForm"></div>
+      <div id="capEditActions" class="form-actions" style="display:none">
+        <button class="btn btn-primary" onclick="saveCapability()">保存</button>
+        <button class="btn btn-outline" onclick="cancelEdit()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 窗口列表 -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>窗口列表</h2>
+      <button class="btn btn-outline btn-sm" onclick="loadWindows()">刷新</button>
+    </div>
+    <div class="panel-body">
+      <table>
+        <thead>
+          <tr>
+            <th>窗口ID</th>
+            <th>通道名</th>
+            <th>坐标 (x,y)</th>
+            <th>尺寸 (w×h)</th>
+            <th>信号类型</th>
+            <th>信号地址</th>
+            <th>创建时间</th>
+          </tr>
+        </thead>
+        <tbody id="windowTableBody">
+          <tr><td colspan="7" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+var API_BASE = '';
+var _capCache = null;
+
+function api(path, opts) {
+  opts = opts || {};
+  return fetch(API_BASE + path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).then(function(r) { return r.json(); });
+}
+
+function toast(msg, type) {
+  type = type || 'success';
+  var el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(function() { el.remove(); }, 3000);
+}
+
+// ---- 设备信息 ----
+function loadDeviceInfo() {
+  document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载中...</div>';
+  api('/simulator/device/info').then(function(res) {
+    if (res.code !== 1) { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+    var d = res.data;
+    var chs = [d.inputChannel1].filter(Boolean);
+    document.getElementById('deviceInfo').innerHTML =
+      it('设备名称', d.deviceName) + it('设备类型', d.deviceType) +
+      it('设备类别', d.deviceCategory === 'INPUT' ? '输入设备' : d.deviceCategory === 'OUTPUT' ? '输出设备' : d.deviceCategory) +
+      it('型号', d.model) + it('序列号', d.serialNumber) +
+      it('输入通道', chs.length ? chs.join(', ') : '无') +
+      it('最大分辨率', d.maxResolution);
+  }).catch(function() { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; });
+}
+
+function it(label, value) {
+  return '<div class="info-item"><span class="info-label">' + esc(label) + '</span><span class="info-value">' + esc(value || '-') + '</span></div>';
+}
+
+// ---- 设备能力 ----
+function loadCapability() {
+  api('/simulator/device/capability').then(function(res) {
+    if (res.code !== 1) return;
+    _capCache = res.data;
+    renderCapabilityForm(_capCache, true);
+  });
+}
+
+function renderCapabilityForm(cap, disabled) {
+  document.getElementById('capabilityForm').innerHTML =
+    fg('窗口移动', 'supportMove', cap.supportMove, 'select', disabled, ['true:支持','false:不支持']) +
+    fg('窗口缩放', 'supportResize', cap.supportResize, 'select', disabled, ['true:支持','false:不支持']) +
+    fg('窗口叠加', 'supportOverlay', cap.supportOverlay, 'select', disabled, ['true:支持','false:不支持']) +
+    fg('最大分辨率', 'maxResolution', cap.maxResolution, 'text', disabled) +
+    fg('输入通道1', 'inputChannel1', cap.inputChannel1 || '', 'text', disabled) +
+    '';
+}
+
+function fg(label, name, value, type, disabled, opts) {
+  var html = '<div class="form-group"><label>' + esc(label) + '</label>';
+  if (opts) {
+    html += '<select id="f_' + name + '"' + (disabled ? ' disabled' : '') + '>';
+    opts.forEach(function(o) { var p = o.split(':'); html += '<option value="' + p[0] + '"' + (String(value) === p[0] ? ' selected' : '') + '>' + esc(p[1]) + '</option>'; });
+    html += '</select>';
+  } else {
+    html += '<input id="f_' + name + '" type="' + type + '" value="' + esc(String(value)) + '"' + (disabled ? ' disabled' : '') + '>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function toggleEdit() {
+  if (!_capCache) return;
+  renderCapabilityForm(_capCache, false);
+  document.getElementById('capEditBtn').style.display = 'none';
+  document.getElementById('capSaveBtn').style.display = '';
+  document.getElementById('capCancelBtn').style.display = '';
+}
+
+function cancelEdit() {
+  if (!_capCache) return;
+  renderCapabilityForm(_capCache, true);
+  document.getElementById('capEditBtn').style.display = '';
+  document.getElementById('capSaveBtn').style.display = 'none';
+  document.getElementById('capCancelBtn').style.display = 'none';
+}
+
+function saveCapability() {
+  var cap = {
+    supportMove: document.getElementById('f_supportMove').value === 'true',
+    supportResize: document.getElementById('f_supportResize').value === 'true',
+    supportOverlay: document.getElementById('f_supportOverlay').value === 'true',
+    maxResolution: document.getElementById('f_maxResolution').value,
+    inputChannel1: document.getElementById('f_inputChannel1').value,
+    inputChannel2: '',
+    outputChannel1: '', outputChannel2: '', outputChannel3: ''
+  };
+  api('/simulator/device/capability', { method: 'PUT', body: cap }).then(function(res) {
+    if (res.code !== 1) { toast('保存失败: ' + (res.msg || '未知错误'), 'error'); return; }
+    _capCache = res.data;
+    renderCapabilityForm(_capCache, true);
+    document.getElementById('capEditBtn').style.display = '';
+    document.getElementById('capSaveBtn').style.display = 'none';
+    document.getElementById('capCancelBtn').style.display = 'none';
+    toast('能力已更新');
+    loadDeviceInfo();
+  }).catch(function() { toast('保存失败', 'error'); });
+}
+
+// ---- 窗口列表 ----
+function loadWindows() {
+  document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">加载中...</td></tr>';
+  api('/simulator/device/windows').then(function(res) {
+    if (res.code !== 1) { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">加载失败</td></tr>'; return; }
+    var list = res.data || [];
+    if (list.length === 0) { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">暂无窗口</td></tr>'; return; }
+    var html = '';
+    list.forEach(function(w) {
+      html += '<tr>' +
+        '<td>' + esc(w.windowId) + '</td>' +
+        '<td>' + esc(w.channelName) + '</td>' +
+        '<td>(' + (w.x||0) + ', ' + (w.y||0) + ')</td>' +
+        '<td>' + (w.width||1920) + '×' + (w.height||1080) + '</td>' +
+        '<td>' + esc(w.sourceType || '-') + '</td>' +
+        '<td style="font-family:monospace;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.sourceUrl || '-') + '</td>' +
+        '<td>' + esc(w.createTime || '-') + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('windowTableBody').innerHTML = html;
+  }).catch(function() { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">加载失败</td></tr>'; });
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 初始化
+loadDeviceInfo();
+loadCapability();
+loadWindows();
+</script>
+
+</body>
+</html>

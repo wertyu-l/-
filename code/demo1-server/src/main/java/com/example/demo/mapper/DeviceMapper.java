@@ -2,6 +2,7 @@ package com.example.demo.mapper;
 
 import com.example.demo.common.DevicePageDTO;
 import com.example.demo.common.DevicePageVO;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.github.pagehelper.Page;
 import org.apache.ibatis.annotations.Mapper;
@@ -19,11 +20,14 @@ public interface DeviceMapper {
     /**
      * 新增设备
      *
-     * @param device  设备描述信息
-     * @param baseUrl 设备 REST API 基地址
+     * @param device     设备描述信息
+     * @param capability 设备能力
+     * @param baseUrl    设备 REST API 基地址
      * @return 影响行数
      */
-    int insert(@Param("device") SimDeviceInfo device, @Param("baseUrl") String baseUrl);
+    int insert(@Param("device") SimDeviceInfo device,
+               @Param("capability") SimDeviceCapability capability,
+               @Param("baseUrl") String baseUrl);
 
     /**
      * 按主键删除设备
@@ -43,9 +47,11 @@ public interface DeviceMapper {
                      @Param("lastHeartbeat") LocalDateTime lastHeartbeat);
 
     /**
-     * 刷新设备信息（更新设备描述字段）
+     * 刷新设备信息（更新设备描述字段和能力）
      */
-    int updateDeviceInfo(@Param("id") Long id, @Param("device") SimDeviceInfo device);
+    int updateDeviceInfo(@Param("id") Long id,
+                         @Param("device") SimDeviceInfo device,
+                         @Param("capability") SimDeviceCapability capability);
 
     /**
      * 按主键查询，返回完整设备信息（含 baseUrl、online）

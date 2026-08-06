@@ -1,9 +1,12 @@
 package com.example.demo.driver;
 
 import com.example.demo.common.Result;
+import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 import com.example.demo.model.SimWindow;
+
+import java.util.List;
 
 /**
  * 统一设备驱动接口
@@ -20,13 +23,22 @@ public interface DeviceDriver {
     /** 获取设备基本信息 */
     SimDeviceInfo getInfo(DeviceEndpoint endpoint);
 
+    /** 获取设备能力 */
+    SimDeviceCapability getCapability(DeviceEndpoint endpoint);
+
     /** 获取设备运行状态 */
     SimDeviceStatus getStatus(DeviceEndpoint endpoint);
 
     /** 创建窗口 */
     Result<SimWindow> createWindow(DeviceEndpoint endpoint, SimWindow window);
 
+    /** 更新窗口位置/大小 */
+    Result<SimWindow> updateWindow(DeviceEndpoint endpoint, String windowId, SimWindow update);
+
     /** 关闭窗口 */
     Result<Void> closeWindow(DeviceEndpoint endpoint, String windowId);
+
+    /** 查询设备所有窗口 */
+    List<SimWindow> getWindows(DeviceEndpoint endpoint);
 
 }

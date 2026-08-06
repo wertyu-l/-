@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 /**
  * 设备分页返回 VO
  * <p>
- * 继承 {@link SimDeviceInfo}（设备描述字段），新增 id、baseUrl 和 online。
+ * 继承 {@link SimDeviceInfo}（设备描述字段），新增 id、baseUrl、online、enabled 和心跳时间。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -29,5 +29,19 @@ public class DevicePageVO extends SimDeviceInfo {
 
     /** 最后心跳时间 */
     private LocalDateTime lastHeartbeat;
+
+    // ===== 设备能力字段（从 DEVICE 表冗余存储，用于 getDeviceCapability） =====
+
+    /** 最大窗口数（仅对输入设备有意义） */
+    private Integer maxWindows;
+
+    /** 是否支持窗口移动（1=支持，0=不支持） */
+    private Integer supportMove;
+
+    /** 是否支持窗口缩放（1=支持，0=不支持） */
+    private Integer supportResize;
+
+    /** 是否支持窗口叠加（1=支持，0=不支持） */
+    private Integer supportOverlay;
 
 }

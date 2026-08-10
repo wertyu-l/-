@@ -18,4 +18,9 @@ public class CellVO {
     private String deviceCategory;
     private Integer online;
     private String baseUrl;
+    private Integer maxWindows;
+    private Integer supportMove;
+    private Integer supportResize;
+    private Integer supportOverlay;
+    private String maxResolution;
 }

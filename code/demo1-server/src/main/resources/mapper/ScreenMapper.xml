@@ -26,6 +26,11 @@
         <result column="device_category" property="deviceCategory"/>
         <result column="online" property="online"/>
         <result column="base_url" property="baseUrl"/>
+        <result column="max_windows" property="maxWindows"/>
+        <result column="support_move" property="supportMove"/>
+        <result column="support_resize" property="supportResize"/>
+        <result column="support_overlay" property="supportOverlay"/>
+        <result column="max_resolution" property="maxResolution"/>
     </resultMap>
 
     <resultMap id="PageVOMap" type="com.example.demo.common.ScreenPageVO">
@@ -82,7 +87,7 @@
     <select id="findCellsByScreenId" resultMap="CellVOMap">
         SELECT sc.id AS c_id, sc.screen_id, sc.row_index, sc.col_index,
                sc.device_id, sc.channel_name,
-               d.device_name, d.device_type, d.device_category, d.online, d.base_url
+               d.device_name, d.device_type, d.device_category, d.online, d.base_url, d.max_windows, d.support_move, d.support_resize, d.support_overlay, d.max_resolution
         FROM SCREEN_CELL sc
         LEFT JOIN DEVICE d ON sc.device_id = d.id
         WHERE sc.screen_id = #{screenId}
@@ -101,6 +106,10 @@
         SELECT COUNT(*) FROM SCREEN_CELL WHERE device_id = #{deviceId}
     </select>
 
+    <select id="countByScreenName" resultType="int">
+        SELECT COUNT(*) FROM SCREEN WHERE screen_name = #{screenName}
+    </select>
+
     <select id="countWindowsByScreenId" resultType="int">
         SELECT COUNT(*) FROM SCREEN_WINDOW WHERE screen_id = #{screenId}
     </select>
@@ -108,5 +117,9 @@
     <delete id="deleteScreen">
         DELETE FROM SCREEN WHERE id = #{id}
     </delete>
+
+    <select id="findScreenIdsByDeviceId" resultType="long">
+        SELECT DISTINCT screen_id FROM SCREEN_CELL WHERE device_id = #{deviceId}
+    </select>
 
 </mapper>

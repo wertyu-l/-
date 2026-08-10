@@ -35,6 +35,9 @@ public class ScreenServiceImpl implements ScreenService {
         if (!StringUtils.hasText(request.getScreenName())) {
             throw new RuntimeException("大屏名称不能为空");
         }
+        if (screenMapper.countByScreenName(request.getScreenName()) > 0) {
+            throw new RuntimeException("大屏名称已存在: " + request.getScreenName());
+        }
         if (request.getRowsCount() == null || request.getRowsCount() < 1) request.setRowsCount(1);
         if (request.getColsCount() == null || request.getColsCount() < 1) request.setColsCount(1);
         if (request.getCellWidth() == null) request.setCellWidth(1920);
@@ -50,12 +53,29 @@ public class ScreenServiceImpl implements ScreenService {
         for (CellBindRequest bind : bindings) {
             validateBinding(bind.getDeviceId(), bind.getChannelName(), request.getCellWidth(), request.getCellHeight());
         }
-        // 校验通道不超限
+        // 校验通道不超限（含当前请求中的设备绑定数 + 数据库已有绑定数）
+        java.util.Map<Long, java.util.Map<String, Integer>> reqDeviceChannelCount = new java.util.HashMap<>();
         for (CellBindRequest bind : bindings) {
-            int currentBindings = screenMapper.countDeviceBindings(bind.getDeviceId());
-            if (currentBindings >= countAvailableOutputChannels(bind.getDeviceId())) {
+            reqDeviceChannelCount
+                .computeIfAbsent(bind.getDeviceId(), k -> new java.util.HashMap<>())
+                .merge(bind.getChannelName(), 1, Integer::sum);
+        }
+        for (CellBindRequest bind : bindings) {
+            // 同一设备同一通道在一个请求中最多出现一次
+            int reqCount = reqDeviceChannelCount.getOrDefault(bind.getDeviceId(), java.util.Collections.emptyMap())
+                    .getOrDefault(bind.getChannelName(), 0);
+            if (reqCount > 1) {
                 DevicePageVO dev = deviceMapper.findById(bind.getDeviceId());
-                throw new RuntimeException("设备 " + dev.getDeviceName() + " 输出通道已全部被占用");
+                throw new RuntimeException("输出通道 " + dev.getDeviceName() + ":" + bind.getChannelName()
+                        + " 不能同时绑定到多个单元");
+            }
+            // 数据库中该设备已绑定总数 + 当前请求中该设备的新绑定数 ≤ 可用通道数
+            int dbBindings = screenMapper.countDeviceBindings(bind.getDeviceId());
+            int reqBindings = reqDeviceChannelCount.get(bind.getDeviceId()).size();
+            if (dbBindings + reqBindings > countAvailableOutputChannels(bind.getDeviceId())) {
+                DevicePageVO dev = deviceMapper.findById(bind.getDeviceId());
+                throw new RuntimeException("设备 " + dev.getDeviceName() + " 输出通道已全部被占用"
+                        + "（已有 " + dbBindings + " 个绑定，本次请求 " + reqBindings + " 个，上限 " + countAvailableOutputChannels(bind.getDeviceId()) + " 个）");
             }
         }
 

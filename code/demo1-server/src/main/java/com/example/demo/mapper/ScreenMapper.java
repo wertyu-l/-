@@ -43,10 +43,16 @@ public interface ScreenMapper {
     /** 统计某设备在所有大屏中的绑定总数 */
     int countDeviceBindings(@Param("deviceId") Long deviceId);
 
+    /** 按名称统计大屏数量（用于重名校验） */
+    int countByScreenName(@Param("screenName") String screenName);
+
     /** 统计某大屏的窗口数 */
     int countWindowsByScreenId(@Param("screenId") Long screenId);
 
     /** 删除大屏（级联由 DB 外键处理） */
     int deleteScreen(@Param("id") Long id);
+
+    /** 查询绑定了指定设备的所有屏幕 ID（去重） */
+    List<Long> findScreenIdsByDeviceId(@Param("deviceId") Long deviceId);
 
 }

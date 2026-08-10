@@ -20,11 +20,18 @@ public class SimDeviceInfo {
     private String deviceCategory;  // 设备类别：INPUT=输入设备，OUTPUT=输出设备
     private String model;           // 设备型号，如 DS-D2055NH-A
     private String serialNumber;    // 序列号
-    private String inputChannel1;   // 输入通道1名称，如 HDMI-1，为空表示无该通道
-    private String inputChannel2;   // 输入通道2名称，为空表示无该通道
-    private String outputChannel1;  // 输出通道1名称，如 OUT-1，为空表示无该通道
-    private String outputChannel2;  // 输出通道2名称，如 OUT-2，为空表示无该通道
-    private String outputChannel3;  // 输出通道3名称，如 OUT-3，为空表示无该通道
+    private int channelCount;       // 实际通道数，控制前端渲染和校验
+    private String inputChannel1;   // 输入通道1名称，为空表示无该通道
+    private String inputChannel2;
+    private String inputChannel3;
+    private String inputChannel4;
+    private String inputChannel5;
+    private String outputChannel1;  // 输出通道1名称，为空表示无该通道
+    private String outputChannel2;
+    private String outputChannel3;
+    private String outputChannel4;
+    private String outputChannel5;
     private String maxResolution;   // 最大分辨率，如 1920x1080
+    private int maxWindows;         // 最大窗口数（仅输出设备有意义）
 
 }

@@ -32,9 +32,6 @@ public class DevicePageVO extends SimDeviceInfo {
 
     // ===== 设备能力字段（从 DEVICE 表冗余存储，用于 getDeviceCapability） =====
 
-    /** 最大窗口数（仅对输入设备有意义） */
-    private Integer maxWindows;
-
     /** 是否支持窗口移动（1=支持，0=不支持） */
     private Integer supportMove;
 

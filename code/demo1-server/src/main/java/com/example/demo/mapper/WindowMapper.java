@@ -45,4 +45,12 @@ public interface WindowMapper {
     /** 按同步状态查询（用于定时重试） */
     List<ScreenWindow> findBySyncStatus(@Param("statuses") List<String> statuses);
 
+    /** 按输入设备标记窗口同步状态（仅标记 synced 的，避免重复） */
+    int updateSyncStatusByDeviceId(@Param("deviceId") Long deviceId,
+                                   @Param("syncStatus") String syncStatus);
+
+    /** 按屏幕标记所有窗口同步状态（仅标记 synced 的） */
+    int updateSyncStatusByScreenId(@Param("screenId") Long screenId,
+                                   @Param("syncStatus") String syncStatus);
+
 }

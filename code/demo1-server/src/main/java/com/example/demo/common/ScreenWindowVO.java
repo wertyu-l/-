@@ -21,6 +21,11 @@ public class ScreenWindowVO {
     private String sourceUrl;
     private String syncStatus;
     private Integer degraded;
+    private Integer supportMove;       // 设备能力-支持移动
+    private Integer supportResize;     // 设备能力-支持缩放
+    private Integer supportOverlay;    // 设备能力-支持叠加
+    private String  maxResolution;     // 设备能力-最大分辨率
+    private Integer maxWindows;        // 设备能力-最大窗口数
     private String createTime;
     private String updateTime;
 }

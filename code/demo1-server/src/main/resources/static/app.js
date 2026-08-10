@@ -224,6 +224,87 @@ var DeviceApi = {
 
 };
 
+// ---------- 大屏 API ----------
+var ScreenApi = {
+  /** 创建大屏 */
+  create: function (req) {
+    return api('/screen', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  },
+
+  /** 分页查询大屏列表 */
+  getPage: function (dto) {
+    var params = new URLSearchParams();
+    params.append('page', dto.page);
+    params.append('pageSize', dto.pageSize);
+    if (dto.keyword) {
+      params.append('keyword', dto.keyword);
+    }
+    return api('/screen/page?' + params.toString());
+  },
+
+  /** 获取大屏详情 */
+  getDetail: function (id) {
+    return api('/screen/' + id);
+  },
+
+  /** 删除大屏 */
+  delete: function (id) {
+    return api('/screen/' + id, { method: 'DELETE' });
+  },
+
+  /** 绑定/更换设备通道 */
+  bindCell: function (screenId, cellId, req) {
+    return api('/screen/' + screenId + '/cell/' + cellId, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+  },
+};
+
+// ---------- 窗口 API ----------
+var WindowApi = {
+  /** 创建窗口 */
+  create: function (screenId, req) {
+    return api('/screen/' + screenId + '/window', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  },
+
+  /** 更新窗口位置/大小 */
+  update: function (screenId, windowId, req) {
+    return api('/screen/' + screenId + '/window/' + encodeURIComponent(windowId), {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+  },
+
+  /** 关闭窗口 */
+  close: function (screenId, windowId) {
+    return api('/screen/' + screenId + '/window/' + encodeURIComponent(windowId), {
+      method: 'DELETE',
+    });
+  },
+
+  /** 查询窗口列表 */
+  list: function (screenId) {
+    return api('/screen/' + screenId + '/windows');
+  },
+
+  /** 一键清空窗口 */
+  clearAll: function (screenId) {
+    return api('/screen/' + screenId + '/windows', { method: 'DELETE' });
+  },
+
+  /** 查询各输出设备的窗口信息 */
+  getOutputDeviceWindows: function (screenId) {
+    return api('/screen/' + screenId + '/output-devices');
+  },
+};
+
 // ---------- 视图切换 ----------
 function showLoginView() {
   $('#loginView').style.display = 'flex';
@@ -243,6 +324,7 @@ function showMainView() {
 var ModuleConfig = {
   user: { title: '用户管理', panelId: 'panel-user' },
   device: { title: '设备管理', panelId: 'panel-device' },
+  screen: { title: '大屏配置', panelId: 'panel-screen' },
 };
 
 function switchModule(moduleName) {
@@ -280,6 +362,9 @@ function switchModule(moduleName) {
   } else if (moduleName === 'device') {
     resetDevicePage();
     loadDeviceList();
+  } else if (moduleName === 'screen') {
+    resetScreenPage();
+    loadScreenList();
   }
 }
 
@@ -348,6 +433,20 @@ function renderPagination() {
 
 // ---------- 设备数据缓存（供详情弹窗直接使用，避免重复请求） ----------
 var DeviceCache = {};
+
+// ---------- 前后台切换状态 ----------
+var AppMode = {
+  current: 'backend',  // 'backend' | 'frontend'
+  currentScreenId: null,
+};
+
+// ---------- 大屏分页状态 ----------
+var ScreenPageState = {
+  page: 1,
+  pageSize: CONFIG.PAGE_SIZE,
+  total: 0,
+  searchKeyword: '',
+};
 
 // ---------- 设备分页状态 ----------
 var DevicePageState = {
@@ -498,6 +597,8 @@ function closeDeviceDeleteModal() {
 function openDeviceDetailModal(device) {
   $('#deviceDetailModal').style.display = 'flex';
   $('#deviceDetailTitle').textContent = '设备详情 — ' + escapeHtml(device.deviceName);
+  // 确保运行状态区域可见（屏幕详情可能会隐藏）
+  $('#deviceStatusGrid').parentElement.style.display = '';
 
   // 基本信息
   var infoHtml = '';
@@ -533,10 +634,10 @@ function openDeviceDetailModal(device) {
     var capHtml = '';
     if (device.deviceCategory === 'OUTPUT') {
       capHtml += '<div class="detail-item"><span class="detail-label">最大窗口数</span><span class="detail-value">' + cap.maxWindows + '</span></div>';
+      capHtml += '<div class="detail-item"><span class="detail-label">窗口移动</span><span class="detail-value">' + (cap.supportMove ? '支持' : '不支持') + '</span></div>';
+      capHtml += '<div class="detail-item"><span class="detail-label">窗口缩放</span><span class="detail-value">' + (cap.supportResize ? '支持' : '不支持') + '</span></div>';
+      capHtml += '<div class="detail-item"><span class="detail-label">窗口叠加</span><span class="detail-value">' + (cap.supportOverlay ? '支持' : '不支持') + '</span></div>';
     }
-    capHtml += '<div class="detail-item"><span class="detail-label">窗口移动</span><span class="detail-value">' + (cap.supportMove ? '支持' : '不支持') + '</span></div>';
-    capHtml += '<div class="detail-item"><span class="detail-label">窗口缩放</span><span class="detail-value">' + (cap.supportResize ? '支持' : '不支持') + '</span></div>';
-    capHtml += '<div class="detail-item"><span class="detail-label">窗口叠加</span><span class="detail-value">' + (cap.supportOverlay ? '支持' : '不支持') + '</span></div>';
     capHtml += '<div class="detail-item"><span class="detail-label">最大分辨率</span><span class="detail-value">' + escapeHtml(cap.maxResolution) + '</span></div>';
     var capInputChannels = [];
     if (cap.inputChannel1) capInputChannels.push(cap.inputChannel1);
@@ -704,6 +805,569 @@ async function refreshDevice(id) {
   } catch (err) {
     showToast('刷新失败: ' + err.message, 'error');
   }
+}
+
+// ---------- 大屏管理功能 ----------
+
+function resetScreenPage() {
+  ScreenPageState.page = 1;
+  ScreenPageState.searchKeyword = '';
+  $('#screenSearchKeyword').value = '';
+}
+
+// 当前登录用户缓存（加载设备列表时更新）
+var _allDevicesCache = [];
+
+async function loadScreenList() {
+  try {
+    $('#screenTableBody').innerHTML = '<tr><td colspan="8" class="table-empty">加载中...</td></tr>';
+
+    var result = await ScreenApi.getPage({
+      keyword: ScreenPageState.searchKeyword || null,
+      page: ScreenPageState.page,
+      pageSize: ScreenPageState.pageSize,
+    });
+
+    var pageResult = result.data;
+    ScreenPageState.total = pageResult.total;
+    renderScreenTable(pageResult.records);
+    renderScreenPagination();
+  } catch (err) {
+    $('#screenTableBody').innerHTML =
+      '<tr><td colspan="8" class="table-empty" style="color:#e74c3c;">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
+    renderScreenPagination();
+  }
+}
+
+function renderScreenTable(records) {
+  var tbody = $('#screenTableBody');
+
+  if (!records || records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="table-empty">暂无数据</td></tr>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < records.length; i++) {
+    var s = records[i];
+    html += '<tr>';
+    html += '<td>' + escapeHtml(s.screenName) + '</td>';
+    html += '<td>' + s.rowsCount + '</td>';
+    html += '<td>' + s.colsCount + '</td>';
+    html += '<td>' + (s.cellWidth || 1920) + '×' + (s.cellHeight || 1080) + '</td>';
+    html += '<td>' + s.cellCount + '</td>';
+    html += '<td>' + (s.windowCount || 0) + '</td>';
+    html += '<td>' + (s.createTime ? formatDateTime(s.createTime) : '-') + '</td>';
+    html += '<td><div class="action-btns">';
+    html += '<button class="btn btn-outline btn-xs screen-detail-btn" data-id="' + s.id + '">详情</button>';
+    html += '<button class="btn btn-danger btn-xs screen-delete-btn" data-id="' + s.id + '" data-name="' + escapeHtml(s.screenName) + '">删除</button>';
+    html += '</div></td>';
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = html;
+}
+
+function renderScreenPagination() {
+  var totalPages = Math.ceil(ScreenPageState.total / ScreenPageState.pageSize) || 1;
+  $('#screenPageInfo').textContent =
+    '第 ' + ScreenPageState.page + ' 页 / 共 ' + totalPages + ' 页（共 ' + ScreenPageState.total + ' 条）';
+  $('#screenPrevPageBtn').disabled = ScreenPageState.page <= 1;
+  $('#screenNextPageBtn').disabled = ScreenPageState.page >= totalPages;
+}
+
+// 创建设备下拉选单选项
+function buildDeviceOptions(selectedId) {
+  var opts = '<option value="">-- 请选择输出设备 --</option>';
+  for (var i = 0; i < _allDevicesCache.length; i++) {
+    var d = _allDevicesCache[i];
+    if (d.deviceCategory !== 'OUTPUT') continue;
+    if (d.online !== 1 || d.enabled !== 1) continue;
+    var sel = (selectedId && d.id === selectedId) ? ' selected' : '';
+    opts += '<option value="' + d.id + '"' + sel + '>' + escapeHtml(d.deviceName) + ' (' + escapeHtml(d.maxResolution) + ')</option>';
+  }
+  return opts;
+}
+
+// 创建设备通道下拉选单
+function buildChannelOptions(deviceId, selectedChannel) {
+  var opts = '<option value="">-- 请选择通道 --</option>';
+  if (!deviceId) return opts;
+  for (var i = 0; i < _allDevicesCache.length; i++) {
+    var d = _allDevicesCache[i];
+    if (d.id !== parseInt(deviceId, 10)) continue;
+    var channels = [];
+    if (d.outputChannel1) channels.push(d.outputChannel1);
+    if (d.outputChannel2) channels.push(d.outputChannel2);
+    if (d.outputChannel3) channels.push(d.outputChannel3);
+    for (var j = 0; j < channels.length; j++) {
+      var sel = (selectedChannel && selectedChannel === channels[j]) ? ' selected' : '';
+      opts += '<option value="' + escapeHtml(channels[j]) + '"' + sel + '>' + escapeHtml(channels[j]) + '</option>';
+    }
+    break;
+  }
+  return opts;
+}
+
+// 生成单元绑定表单
+function generateCellBindForm(rows, cols) {
+  var listEl = $('#cellBindList');
+  var total = rows * cols;
+  var html = '';
+  for (var r = 0; r < rows; r++) {
+    for (var c = 0; c < cols; c++) {
+      html += '<div class="cell-bind-item">';
+      html += '<span class="cell-bind-label">单元 [' + r + ',' + c + ']</span>';
+      html += '<select class="bind-device-select" data-row="' + r + '" data-col="' + c + '">' + buildDeviceOptions() + '</select>';
+      html += '<select class="bind-channel-select" data-row="' + r + '" data-col="' + c + '"><option value="">-- 请选择通道 --</option></select>';
+      html += '</div>';
+    }
+  }
+  listEl.innerHTML = html;
+
+  // 设备下拉改变时联动通道下拉
+  var deviceSelects = listEl.querySelectorAll('.bind-device-select');
+  for (var i = 0; i < deviceSelects.length; i++) {
+    deviceSelects[i].addEventListener('change', function () {
+      var row = this.getAttribute('data-row');
+      var col = this.getAttribute('data-col');
+      var channelSelect = listEl.querySelector('.bind-channel-select[data-row="' + row + '"][data-col="' + col + '"]');
+      channelSelect.innerHTML = buildChannelOptions(this.value);
+    });
+  }
+}
+
+// 行/列数变化时重新生成绑定表单
+function onScreenGridChange() {
+  var rows = parseInt($('#screenRows').value, 10) || 1;
+  var cols = parseInt($('#screenCols').value, 10) || 1;
+  generateCellBindForm(rows, cols);
+}
+
+// 创建大屏弹窗
+async function openScreenCreateModal() {
+  $('#screenCreateModal').style.display = 'flex';
+  $('#screenCreateForm').reset();
+  $('#screenCreateError').textContent = '';
+  $('#screenRows').value = 2;
+  $('#screenCols').value = 2;
+  $('#screenCellWidth').value = 1920;
+  $('#screenCellHeight').value = 1080;
+  // 先加载设备列表，再生成绑定表单
+  await loadAllDevicesForBind();
+  generateCellBindForm(2, 2);
+}
+
+function closeScreenCreateModal() {
+  $('#screenCreateModal').style.display = 'none';
+  $('#screenCreateError').textContent = '';
+}
+
+// 加载所有设备供绑定选择
+async function loadAllDevicesForBind() {
+  try {
+    var result = await DeviceApi.page({ page: 1, pageSize: 200 });
+    _allDevicesCache = result.data.records || [];
+  } catch (_) {
+    _allDevicesCache = [];
+  }
+}
+
+// 保存大屏
+async function saveScreen() {
+  var screenName = $('#screenName').value.trim();
+  var rowsCount = parseInt($('#screenRows').value, 10) || 1;
+  var colsCount = parseInt($('#screenCols').value, 10) || 1;
+  var cellWidth = parseInt($('#screenCellWidth').value, 10) || 1920;
+  var cellHeight = parseInt($('#screenCellHeight').value, 10) || 1080;
+
+  if (!screenName) {
+    $('#screenCreateError').textContent = '请输入大屏名称';
+    return;
+  }
+
+  // 收集每个单元的绑定信息
+  var cells = [];
+  var deviceSelects = $('#cellBindList').querySelectorAll('.bind-device-select');
+  var channelSelects = $('#cellBindList').querySelectorAll('.bind-channel-select');
+
+  for (var i = 0; i < deviceSelects.length; i++) {
+    var ds = deviceSelects[i];
+    var cs = channelSelects[i];
+    var row = parseInt(ds.getAttribute('data-row'), 10);
+    var col = parseInt(ds.getAttribute('data-col'), 10);
+    var deviceId = ds.value ? parseInt(ds.value, 10) : null;
+    var channelName = cs.value || null;
+
+    if (!deviceId || !channelName) {
+      $('#screenCreateError').textContent = '单元 [' + row + ',' + col + '] 必须绑定设备';
+      return;
+    }
+
+    cells.push({ rowIndex: row, colIndex: col, deviceId: deviceId, channelName: channelName });
+  }
+
+  var saveBtn = $('#saveScreenBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '创建中...';
+  $('#screenCreateError').textContent = '';
+
+  try {
+    await ScreenApi.create({
+      screenName: screenName,
+      rowsCount: rowsCount,
+      colsCount: colsCount,
+      cellWidth: cellWidth,
+      cellHeight: cellHeight,
+      cells: cells,
+    });
+    showToast('大屏创建成功', 'success');
+    closeScreenCreateModal();
+    loadScreenList();
+  } catch (err) {
+    $('#screenCreateError').textContent = err.message;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '创建';
+  }
+}
+
+// 大屏删除弹窗
+function openScreenDeleteModal(id, name) {
+  $('#deleteScreenName').textContent = name;
+  $('#screenDeleteModal').style.display = 'flex';
+  $('#confirmScreenDeleteBtn').setAttribute('data-id', id);
+}
+
+function closeScreenDeleteModal() {
+  $('#screenDeleteModal').style.display = 'none';
+}
+
+// 确认删除大屏
+async function confirmScreenDelete() {
+  var id = $('#confirmScreenDeleteBtn').getAttribute('data-id');
+  var btn = $('#confirmScreenDeleteBtn');
+  btn.disabled = true;
+  btn.textContent = '删除中...';
+
+  try {
+    await ScreenApi.delete(id);
+    showToast('大屏删除成功', 'success');
+    closeScreenDeleteModal();
+    if (ScreenPageState.page > 1 && (ScreenPageState.total - 1) <= (ScreenPageState.page - 1) * ScreenPageState.pageSize) {
+      ScreenPageState.page--;
+    }
+    loadScreenList();
+  } catch (err) {
+    showToast('删除失败: ' + err.message, 'error');
+    closeScreenDeleteModal();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '确认删除';
+  }
+}
+
+// 单元绑定设备弹窗
+var _bindScreenId = null;
+var _bindCellId = null;
+
+async function openCellBindModal(screenId, cell) {
+  _bindScreenId = screenId;
+  _bindCellId = cell.id;
+  $('#bindScreenId').value = screenId;
+  $('#bindCellId').value = cell.id;
+  $('#bindCellPosition').textContent = '行 ' + cell.rowIndex + ' / 列 ' + cell.colIndex;
+  $('#cellBindError').textContent = '';
+  $('#cellBindModal').style.display = 'flex';
+
+  // 确保设备列表已加载
+  if (_allDevicesCache.length === 0) {
+    await loadAllDevicesForBind();
+  }
+
+  // 加载设备下拉选单
+  $('#bindDeviceSelect').innerHTML = buildDeviceOptions(cell.deviceId || null);
+  $('#bindChannelSelect').innerHTML = buildChannelOptions(cell.deviceId || null, cell.channelName || null);
+
+  // 设备下拉联动通道
+  $('#bindDeviceSelect').onchange = function () {
+    $('#bindChannelSelect').innerHTML = buildChannelOptions(this.value);
+  };
+}
+
+function closeCellBindModal() {
+  $('#cellBindModal').style.display = 'none';
+  $('#cellBindError').textContent = '';
+}
+
+// 保存单元绑定
+async function saveCellBind() {
+  var deviceId = parseInt($('#bindDeviceSelect').value, 10);
+  var channelName = $('#bindChannelSelect').value;
+
+  if (!deviceId) {
+    $('#cellBindError').textContent = '请选择输出设备';
+    return;
+  }
+  if (!channelName) {
+    $('#cellBindError').textContent = '请选择输出通道';
+    return;
+  }
+
+  var saveBtn = $('#saveCellBindBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '绑定中...';
+  $('#cellBindError').textContent = '';
+
+  try {
+    await ScreenApi.bindCell(_bindScreenId, _bindCellId, {
+      deviceId: deviceId,
+      channelName: channelName,
+    });
+    showToast('设备通道绑定成功', 'success');
+    closeCellBindModal();
+    // 刷新大屏详情（如果在前台模式）
+    if (AppMode.current === 'frontend' && AppMode.currentScreenId === _bindScreenId) {
+      loadFrontendScreen(AppMode.currentScreenId);
+    }
+  } catch (err) {
+    $('#cellBindError').textContent = err.message;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '绑定';
+  }
+}
+
+// 查看大屏详情（跳转到详情弹窗显示单元列表）
+async function openScreenDetailModal(screenId) {
+  try {
+    var result = await ScreenApi.getDetail(screenId);
+    var screenDetail = result.data;
+
+    // 使用设备详情弹窗来展示
+    $('#deviceDetailModal').style.display = 'flex';
+    $('#deviceDetailTitle').textContent = '大屏详情 — ' + escapeHtml(screenDetail.screenName);
+
+    // 基本信息
+    var infoHtml = '';
+    infoHtml += '<div class="detail-item"><span class="detail-label">大屏名称</span><span class="detail-value">' + escapeHtml(screenDetail.screenName) + '</span></div>';
+    infoHtml += '<div class="detail-item"><span class="detail-label">布局</span><span class="detail-value">' + screenDetail.rowsCount + ' × ' + screenDetail.colsCount + '</span></div>';
+    infoHtml += '<div class="detail-item"><span class="detail-label">单元分辨率</span><span class="detail-value">' + (screenDetail.cellWidth || 1920) + ' × ' + (screenDetail.cellHeight || 1080) + '</span></div>';
+    infoHtml += '<div class="detail-item"><span class="detail-label">创建时间</span><span class="detail-value">' + (screenDetail.createTime ? formatDateTime(screenDetail.createTime) : '-') + '</span></div>';
+    $('#deviceInfoGrid').innerHTML = infoHtml;
+
+    // 运行状态（大屏无运行状态，隐藏该区域）
+    $('#deviceStatusGrid').parentElement.style.display = 'none';
+
+    // 单元列表
+    var cells = screenDetail.cells || [];
+    var cellHtml = '<div>';
+    cellHtml += '<table class="data-table"><thead><tr><th>位置</th><th>设备</th><th>通道</th><th>类别</th><th>在线</th><th>最大窗口</th><th>移动</th><th>缩放</th><th>叠加</th><th>分辨率</th><th>操作</th></tr></thead><tbody>';
+    for (var i = 0; i < cells.length; i++) {
+      var c = cells[i];
+      var pos = '[' + c.rowIndex + ',' + c.colIndex + ']';
+      var deviceInfo = c.deviceName ? escapeHtml(c.deviceName) : '<span style="color:#999;">未绑定</span>';
+      var channelInfo = c.channelName ? escapeHtml(c.channelName) : '-';
+      var catInfo = c.deviceCategory ? (c.deviceCategory === 'OUTPUT' ? '<span class="status-tag status-disabled">输出</span>' : escapeHtml(c.deviceCategory)) : '-';
+      var onlineInfo = c.online === 1 ? '<span class="status-dot online"></span>在线' : '<span class="status-dot offline"></span>离线';
+      var maxWinInfo = c.maxWindows != null ? c.maxWindows : '-';
+      var moveInfo = c.supportMove != null ? (c.supportMove === 1 ? '✓' : '✗') : '-';
+      var resizeInfo = c.supportResize != null ? (c.supportResize === 1 ? '✓' : '✗') : '-';
+      var overlayInfo = c.supportOverlay != null ? (c.supportOverlay === 1 ? '✓' : '✗') : '-';
+      var resInfo = c.maxResolution || '-';
+      var actionHtml = '<button class="btn btn-outline btn-xs cell-bind-btn" data-screen-id="' + screenDetail.id + '" data-cell-id="' + c.id + '" data-row="' + c.rowIndex + '" data-col="' + c.colIndex + '" data-device-id="' + (c.deviceId || '') + '" data-channel="' + escapeHtml(c.channelName || '') + '">更换绑定</button>';
+      cellHtml += '<tr><td>' + pos + '</td><td>' + deviceInfo + '</td><td>' + channelInfo + '</td><td>' + catInfo + '</td><td>' + onlineInfo + '</td><td>' + maxWinInfo + '</td><td>' + moveInfo + '</td><td>' + resizeInfo + '</td><td>' + overlayInfo + '</td><td>' + resInfo + '</td><td>' + actionHtml + '</td></tr>';
+    }
+    cellHtml += '</tbody></table></div>';
+    $('#deviceCapabilityGrid').innerHTML = cellHtml;
+
+    // 绑定更换按钮事件
+    var bindBtns = $('#deviceCapabilityGrid').querySelectorAll('.cell-bind-btn');
+    for (var j = 0; j < bindBtns.length; j++) {
+      bindBtns[j].addEventListener('click', function () {
+        var cellData = {
+          id: parseInt(this.getAttribute('data-cell-id'), 10),
+          rowIndex: parseInt(this.getAttribute('data-row'), 10),
+          colIndex: parseInt(this.getAttribute('data-col'), 10),
+          deviceId: this.getAttribute('data-device-id') ? parseInt(this.getAttribute('data-device-id'), 10) : null,
+          channelName: this.getAttribute('data-channel') || null,
+        };
+        openCellBindModal(parseInt(this.getAttribute('data-screen-id'), 10), cellData);
+      });
+    }
+  } catch (err) {
+    showToast('获取大屏详情失败: ' + err.message, 'error');
+  }
+}
+
+// ---------- 前后台切换 ----------
+
+function switchToFrontend() {
+  AppMode.current = 'frontend';
+
+  // 隐藏侧边栏和后台面板
+  $('#sidebar').style.display = 'none';
+  var panels = $$('.content-panel');
+  for (var i = 0; i < panels.length; i++) {
+    panels[i].classList.remove('active');
+  }
+  $('.main-area').style.marginLeft = '0';
+
+  // 显示前台视图
+  $('#frontendView').classList.add('active');
+
+  // 更新顶栏
+  $('#moduleTitle').textContent = '前台展示';
+  $('#switchToFrontendBtn').textContent = '后台管理';
+  $('#switchToFrontendBtn').classList.add('active');
+
+  // 加载大屏列表到下拉选择
+  loadScreenSelect();
+}
+
+function switchToBackend() {
+  AppMode.current = 'backend';
+  AppMode.currentScreenId = null;
+  sessionStorage.removeItem('frontend_screen_id');
+
+  // 显示侧边栏和后台面板
+  $('#sidebar').style.display = '';
+  $('.main-area').style.marginLeft = '';
+  $('#frontendView').classList.remove('active');
+
+  // 清空前台画布和信号源
+  if (typeof ScreenPaint !== 'undefined' && ScreenPaint.clear) {
+    ScreenPaint.clear();
+  }
+  if (typeof SignalSource !== 'undefined' && SignalSource.clear) {
+    SignalSource.clear();
+  }
+
+  // 隐藏画布
+  $('#screenCanvas').style.display = 'none';
+  $('#canvasPlaceholder').style.display = '';
+  $('#canvasToolbar').style.display = 'none';
+
+  // 更新顶栏
+  $('#moduleTitle').textContent = '大屏配置';
+  $('#switchToFrontendBtn').textContent = '前台展示';
+  $('#switchToFrontendBtn').classList.remove('active');
+
+  // 切回后台管理面板
+  switchModule('screen');
+}
+
+// 加载大屏选择下拉框
+async function loadScreenSelect() {
+  try {
+    var result = await ScreenApi.getPage({ page: 1, pageSize: 100 });
+    var screens = result.data.records || [];
+
+    if (screens.length === 0) {
+      $('#screenSelectDialog').style.display = 'none';
+      $('#canvasPlaceholder').querySelector('.placeholder-text').textContent = '暂无可用大屏';
+      $('#canvasPlaceholder').querySelector('.placeholder-hint').textContent = '请先在后台管理中创建大屏并绑定输出设备';
+      return;
+    }
+
+    // 有多个大屏时显示选择下拉
+    if (screens.length === 1) {
+      loadFrontendScreen(screens[0].id);
+    } else {
+      var dropdown = $('#screenSelectDropdown');
+      var html = '<option value="">-- 请选择大屏 --</option>';
+      for (var i = 0; i < screens.length; i++) {
+        html += '<option value="' + screens[i].id + '">' + escapeHtml(screens[i].screenName) + ' (' + screens[i].rowsCount + '×' + screens[i].colsCount + ')</option>';
+      }
+      dropdown.innerHTML = html;
+      $('#screenSelectDialog').style.display = '';
+      $('#screenCanvas').style.display = 'none';
+      $('#canvasPlaceholder').querySelector('.placeholder-text').textContent = '请选择大屏';
+      $('#canvasPlaceholder').querySelector('.placeholder-hint').textContent = '';
+    }
+  } catch (err) {
+    showToast('加载大屏列表失败: ' + err.message, 'error');
+  }
+}
+
+// 加载前台大屏
+async function loadFrontendScreen(screenId) {
+  try {
+    AppMode.currentScreenId = screenId;
+    sessionStorage.setItem('frontend_screen_id', screenId);
+
+    // 显示画布
+    $('#screenCanvas').style.display = '';
+    $('#canvasPlaceholder').style.display = 'none';
+    $('#screenSelectDialog').style.display = 'none';
+    $('#canvasToolbar').style.display = '';
+
+    // 加载大屏详情
+    var detailResult = await ScreenApi.getDetail(screenId);
+    var screenDetail = detailResult.data;
+
+    // 加载窗口列表
+    var windowsResult = await WindowApi.list(screenId);
+    var windows = windowsResult.data || [];
+
+    // 渲染画布
+    if (typeof ScreenPaint !== 'undefined') {
+      ScreenPaint.render(screenDetail, windows);
+    }
+
+    // 加载信号源
+    if (typeof SignalSource !== 'undefined') {
+      SignalSource.loadSignalSources(screenDetail);
+      // 同时加载输出设备窗口信息
+      SignalSource.loadOutputDevices(screenId);
+    }
+
+    // 更新顶栏大屏选择
+    updateTopbarScreenSelector(screenDetail);
+
+  } catch (err) {
+    showToast('加载大屏失败: ' + err.message, 'error');
+  }
+}
+
+// 更新顶栏的大屏选择器
+function updateTopbarScreenSelector(screenDetail) {
+  var actionsEl = $('#topbarActions');
+  // 移除旧的选择器
+  var oldSelector = actionsEl.querySelector('.screen-selector');
+  if (oldSelector) oldSelector.remove();
+
+  var selectorHtml = '<div class="screen-selector">';
+  selectorHtml += '<span>当前大屏：</span>';
+  selectorHtml += '<strong>' + escapeHtml(screenDetail.screenName) + '</strong>';
+  selectorHtml += '<span style="font-size:12px;color:var(--text-muted)">（' + screenDetail.rowsCount + '×' + screenDetail.colsCount + '）</span>';
+  selectorHtml += '<button class="btn btn-outline btn-xs" id="changeScreenBtn">切换大屏</button>';
+  selectorHtml += '</div>';
+
+  // 临时插入
+  var switchBtn = $('#switchToFrontendBtn');
+  var div = document.createElement('div');
+  div.innerHTML = selectorHtml;
+  var selectorEl = div.firstChild;
+  actionsEl.insertBefore(selectorEl, switchBtn);
+
+  // 绑定切换大屏按钮
+  selectorEl.querySelector('#changeScreenBtn').addEventListener('click', function () {
+    // 显示选择对话框
+    $('#screenCanvas').style.display = 'none';
+    $('#canvasPlaceholder').style.display = '';
+    $('#canvasToolbar').style.display = 'none';
+    if (typeof ScreenPaint !== 'undefined' && ScreenPaint.clear) {
+      ScreenPaint.clear();
+    }
+    if (typeof SignalSource !== 'undefined' && SignalSource.clear) {
+      SignalSource.clear();
+    }
+    // 移除选择器
+    var sel = actionsEl.querySelector('.screen-selector');
+    if (sel) sel.remove();
+    loadScreenSelect();
+  });
 }
 
 function escapeHtml(str) {
@@ -1218,6 +1882,141 @@ function bindEvents() {
     }
   });
 
+  // ==================== 前后台切换 ====================
+  $('#switchToFrontendBtn').addEventListener('click', function () {
+    if (AppMode.current === 'frontend') {
+      switchToBackend();
+    } else {
+      switchToFrontend();
+    }
+  });
+
+  // 加载大屏按钮
+  $('#loadScreenBtn').addEventListener('click', function () {
+    var screenId = parseInt($('#screenSelectDropdown').value, 10);
+    if (!screenId) {
+      showToast('请先选择大屏', 'warning');
+      return;
+    }
+    loadFrontendScreen(screenId);
+  });
+
+  // 一键清空窗口按钮
+  $('#clearWindowsBtn').addEventListener('click', async function () {
+    if (!AppMode.currentScreenId) return;
+    if (!confirm('确定要清空当前大屏的所有窗口吗？此操作不可撤销。')) return;
+
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '清空中...';
+    try {
+      await WindowApi.clearAll(AppMode.currentScreenId);
+      showToast('窗口已清空', 'success');
+      // 重新加载大屏
+      loadFrontendScreen(AppMode.currentScreenId);
+    } catch (err) {
+      showToast('清空失败: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '一键清空';
+    }
+  });
+
+  // ==================== 大屏管理事件绑定 ====================
+
+  // 大屏搜索
+  $('#screenSearchBtn').addEventListener('click', function () {
+    ScreenPageState.searchKeyword = $('#screenSearchKeyword').value.trim();
+    ScreenPageState.page = 1;
+    loadScreenList();
+  });
+
+  $('#screenSearchKeyword').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      ScreenPageState.searchKeyword = $('#screenSearchKeyword').value.trim();
+      ScreenPageState.page = 1;
+      loadScreenList();
+    }
+  });
+
+  $('#screenResetSearchBtn').addEventListener('click', function () {
+    $('#screenSearchKeyword').value = '';
+    ScreenPageState.searchKeyword = '';
+    ScreenPageState.page = 1;
+    loadScreenList();
+  });
+
+  // 大屏分页
+  $('#screenPrevPageBtn').addEventListener('click', function () {
+    if (ScreenPageState.page > 1) {
+      ScreenPageState.page--;
+      loadScreenList();
+    }
+  });
+
+  $('#screenNextPageBtn').addEventListener('click', function () {
+    var totalPages = Math.ceil(ScreenPageState.total / ScreenPageState.pageSize) || 1;
+    if (ScreenPageState.page < totalPages) {
+      ScreenPageState.page++;
+      loadScreenList();
+    }
+  });
+
+  $('#screenPageSizeSelect').addEventListener('change', function () {
+    ScreenPageState.pageSize = parseInt(this.value, 10);
+    ScreenPageState.page = 1;
+    loadScreenList();
+  });
+
+  // 创建大屏按钮
+  $('#addScreenBtn').addEventListener('click', function () {
+    openScreenCreateModal();
+  });
+
+  // 行/列数变化
+  $('#screenRows').addEventListener('change', onScreenGridChange);
+  $('#screenCols').addEventListener('change', onScreenGridChange);
+
+  $('#screenRows').addEventListener('input', onScreenGridChange);
+  $('#screenCols').addEventListener('input', onScreenGridChange);
+
+  // 创建大屏弹窗事件
+  $('#closeScreenCreateModalBtn').addEventListener('click', closeScreenCreateModal);
+  $('#cancelScreenCreateBtn').addEventListener('click', closeScreenCreateModal);
+  $('#screenCreateModal').addEventListener('click', function (e) {
+    if (e.target === this) closeScreenCreateModal();
+  });
+  $('#saveScreenBtn').addEventListener('click', saveScreen);
+
+  // 大屏删除弹窗事件
+  $('#closeScreenDeleteModalBtn').addEventListener('click', closeScreenDeleteModal);
+  $('#cancelScreenDeleteBtn').addEventListener('click', closeScreenDeleteModal);
+  $('#screenDeleteModal').addEventListener('click', function (e) {
+    if (e.target === this) closeScreenDeleteModal();
+  });
+  $('#confirmScreenDeleteBtn').addEventListener('click', confirmScreenDelete);
+
+  // 单元绑定弹窗事件
+  $('#closeCellBindModalBtn').addEventListener('click', closeCellBindModal);
+  $('#cancelCellBindBtn').addEventListener('click', closeCellBindModal);
+  $('#cellBindModal').addEventListener('click', function (e) {
+    if (e.target === this) closeCellBindModal();
+  });
+  $('#saveCellBindBtn').addEventListener('click', saveCellBind);
+
+  // 大屏表格操作（事件委托）
+  $('#screenTableBody').addEventListener('click', function (e) {
+    var target = e.target;
+    if (target.classList.contains('screen-detail-btn')) {
+      openScreenDetailModal(target.getAttribute('data-id'));
+    }
+    if (target.classList.contains('screen-delete-btn')) {
+      var screenId = target.getAttribute('data-id');
+      var screenName = target.getAttribute('data-name');
+      openScreenDeleteModal(screenId, screenName);
+    }
+  });
+
   // 键盘关闭弹窗
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
@@ -1227,6 +2026,9 @@ function bindEvents() {
       if ($('#deviceDeleteModal').style.display === 'flex') closeDeviceDeleteModal();
       if ($('#deviceDetailModal').style.display === 'flex') closeDeviceDetailModal();
       if ($('#discoverModal').style.display === 'flex') closeDiscoverModal();
+      if ($('#screenCreateModal').style.display === 'flex') closeScreenCreateModal();
+      if ($('#screenDeleteModal').style.display === 'flex') closeScreenDeleteModal();
+      if ($('#cellBindModal').style.display === 'flex') closeCellBindModal();
     }
   });
 }
@@ -1237,9 +2039,15 @@ function init() {
 
   var token = Auth.getToken();
   if (token) {
-    // 有 token，直接进入主页面（token 有效性由 api() 中的 401 处理兜底）
     showMainView();
     loadUserList();
+
+    // 刷新后恢复前台状态
+    var savedScreenId = sessionStorage.getItem('frontend_screen_id');
+    if (savedScreenId) {
+      switchToFrontend();
+      loadFrontendScreen(parseInt(savedScreenId, 10));
+    }
   } else {
     showLoginView();
   }

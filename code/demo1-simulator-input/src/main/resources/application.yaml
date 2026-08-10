@@ -1,0 +1,19 @@
+server:
+  port: 8086
+
+discovery:
+  port: 9999
+
+spring:
+  application:
+    name: demo1-simulator-input
+
+  datasource:
+    url: jdbc:h2:mem:simulator_input
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  sql:
+    init:
+      mode: always

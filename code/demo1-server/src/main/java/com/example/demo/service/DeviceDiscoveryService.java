@@ -28,10 +28,33 @@ public class DeviceDiscoveryService {
     @Autowired
     private DeviceMapper deviceMapper;
 
-    @Value("${discovery.ports:9999}")
+    @Value("${discovery.ports:9997,9999}")
     private String discoveryPorts;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * 解析端口配置，支持单端口和范围格式
+     * 例如: "20000-20010,30000-30010" 或 "20000,20001,30000-30005"
+     */
+    private List<Integer> parsePorts(String config) {
+        List<Integer> result = new ArrayList<>();
+        String[] parts = config.split(",");
+        for (String part : parts) {
+            part = part.trim();
+            if (part.contains("-")) {
+                String[] range = part.split("-");
+                int start = Integer.parseInt(range[0].trim());
+                int end = Integer.parseInt(range[1].trim());
+                for (int p = start; p <= end; p++) {
+                    result.add(p);
+                }
+            } else {
+                result.add(Integer.parseInt(part));
+            }
+        }
+        return result;
+    }
 
     /**
      * 发送 UDP 广播搜索设备
@@ -41,12 +64,7 @@ public class DeviceDiscoveryService {
     public List<DiscoveredNode> discover() {
         List<DiscoveredNode> result = new ArrayList<>();
 
-        // 解析端口列表
-        String[] ports = discoveryPorts.split(",");
-        int[] portArray = new int[ports.length];
-        for (int i = 0; i < ports.length; i++) {
-            portArray[i] = Integer.parseInt(ports[i].trim());
-        }
+        List<Integer> ports = parsePorts(discoveryPorts);
 
         try (DatagramSocket socket = new DatagramSocket()) {
             socket.setBroadcast(true);
@@ -55,7 +73,7 @@ public class DeviceDiscoveryService {
             byte[] requestData = objectMapper.writeValueAsBytes(Map.of("action", "discovery"));
 
             // 向每个发现端口发送广播
-            for (int port : portArray) {
+            for (int port : ports) {
                 try {
                     DatagramPacket requestPacket = new DatagramPacket(
                             requestData, requestData.length,

@@ -36,6 +36,11 @@
         <result column="source_url" property="sourceUrl"/>
         <result column="sync_status" property="syncStatus"/>
         <result column="degraded" property="degraded"/>
+        <result column="support_move" property="supportMove"/>
+        <result column="support_resize" property="supportResize"/>
+        <result column="support_overlay" property="supportOverlay"/>
+        <result column="max_resolution" property="maxResolution"/>
+        <result column="max_windows" property="maxWindows"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
@@ -56,7 +61,7 @@
                sw.x, sw.y, sw.width, sw.height,
                sw.source_type, sw.source_url, sw.sync_status, sw.degraded,
                sw.create_time, sw.update_time,
-               d.device_name, d.device_category
+               d.device_name, d.device_category, d.support_move, d.support_resize, d.support_overlay, d.max_resolution, d.max_windows
         FROM SCREEN_WINDOW sw
         LEFT JOIN DEVICE d ON sw.device_id = d.id
         WHERE sw.screen_id = #{screenId}
@@ -95,5 +100,15 @@
             #{s}
         </foreach>
     </select>
+
+    <update id="updateSyncStatusByDeviceId">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, update_time = CURRENT_TIMESTAMP
+        WHERE device_id = #{deviceId} AND sync_status = 'synced'
+    </update>
+
+    <update id="updateSyncStatusByScreenId">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, update_time = CURRENT_TIMESTAMP
+        WHERE screen_id = #{screenId} AND sync_status = 'synced'
+    </update>
 
 </mapper>

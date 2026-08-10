@@ -77,4 +77,15 @@ public class WindowController {
         }
     }
 
+    /** 查询各输出设备的窗口信息：GET /screen/{screenId}/output-devices */
+    @GetMapping("/screen/{screenId}/output-devices")
+    public Result<List<OutputDeviceWindowsVO>> getOutputDeviceWindows(@PathVariable Long screenId) {
+        try {
+            List<OutputDeviceWindowsVO> list = windowService.getOutputDeviceWindows(screenId);
+            return Result.success(list);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
 }

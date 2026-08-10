@@ -14,4 +14,5 @@ public class WindowCreateRequest {
     private Integer y = 0;
     private Integer width = 960;
     private Integer height = 540;
+    private String sourceUrl;
 }

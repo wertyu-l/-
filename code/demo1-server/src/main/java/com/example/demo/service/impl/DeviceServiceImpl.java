@@ -9,6 +9,7 @@ import com.example.demo.model.SimDeviceInfo;
 import com.example.demo.model.SimDeviceStatus;
 import com.example.demo.service.DeviceDiscoveryService;
 import com.example.demo.service.DeviceService;
+import com.example.demo.service.WindowService;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,9 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Autowired
     private DeviceDiscoveryService discoveryService;
+
+    @Autowired
+    private WindowService windowService;
 
     /**
      * 手动添加设备
@@ -207,6 +211,9 @@ public class DeviceServiceImpl implements DeviceService {
             try {
                 SimDeviceStatus status = restDeviceDriver.getStatus(endpoint);
                 if (status != null && status.isOnline()) {
+                    if (device.getOnline() == null || device.getOnline() == 0) {
+                        windowService.markPendingForDevice(device);
+                    }
                     deviceMapper.updateOnline(device.getId(), 1, now);
                 } else {
                     deviceMapper.updateOnline(device.getId(), 0, now);
@@ -299,7 +306,7 @@ public class DeviceServiceImpl implements DeviceService {
         }
 
         SimDeviceCapability capability = new SimDeviceCapability();
-        capability.setMaxWindows(device.getMaxWindows() != null ? device.getMaxWindows() : 0);
+        capability.setMaxWindows(device.getMaxWindows());
         capability.setSupportMove(device.getSupportMove() != null && device.getSupportMove() == 1);
         capability.setSupportResize(device.getSupportResize() != null && device.getSupportResize() == 1);
         capability.setSupportOverlay(device.getSupportOverlay() != null && device.getSupportOverlay() == 1);

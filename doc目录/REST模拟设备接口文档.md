@@ -1,4 +1,4 @@
-﻿# REST 模拟设备接口文档
+# REST 模拟设备接口文档
 
 ## 1. 概述
 
@@ -10,8 +10,8 @@ REST 模拟设备是异构硬件设备管控系统中的**独立 Spring Boot 程
 
 
 > **设备类别说明：** 模拟设备分为两类，由 `deviceCategory` 字段标识（`INPUT`/`OUTPUT`）：
-> - **输入设备（`deviceCategory = "INPUT"`）：** 拥有输入通道，负责提供信号源。**窗口相关接口（创建/关闭/查询/更新窗口）仅对输入设备有意义。**
-> - **输出设备（`deviceCategory = "OUTPUT"`）：** 拥有输出通道，用于大屏绑定显示。**输出设备不存在窗口概念，不涉及窗口操作。**
+> - **输入设备（`deviceCategory = "INPUT"`）：** 拥有输入通道，负责提供信号源。**窗口相关接口（创建/关闭/查询/更新窗口）仅对输入设备有意义。输出设备仅支持查询窗口（列表查询和单个查询）。**
+> - **输出设备（`deviceCategory = "OUTPUT"`）：** 拥有输出通道，用于大屏绑定显示。**输出设备仅支持查询窗口（接收管控系统推送的子窗口），不支持创建/修改/删除。**
 ## 2. 项目结构
 
 模拟设备是独立的 Spring Boot 程序，共有 4 个模拟器模块，数据模型与管控系统共享 `demo1-common`。
@@ -20,7 +20,7 @@ REST 模拟设备是异构硬件设备管控系统中的**独立 Spring Boot 程
 demo1-simulator/                        ← 模拟设备1（端口 8086，输入设备，1个输入通道）
 demo1-simulator2/                       ← 模拟设备2（端口 8087，输入设备，2个输入通道）
 demo1-simulator3/                       ← 模拟设备3（端口 8088，输出设备，2个输出通道）
-demo1-simulator4/                       ← 模拟设备4（端口 8089，输出设备，2个输出通道）
+demo1-simulator4/                       ← 模拟设备4（端口 8089，输出设备，3个输出通道）
 └── src/main/java/com/example/demo/simulator{2,3,4}/
     ├── controller/
     │   └── SimDeviceController.java    ← REST 接口层
@@ -43,7 +43,7 @@ demo1-common/                           ← 共享数据模型
 ```
 
 > 管控系统（demo1-server）通过 `DeviceDriver` 接口调用模拟设备，具体看设备管理模块设计文档。
-> 输入设备拥有窗口操作 API（创建/关闭/查询/更新窗口），输出设备不涉及窗口操作。
+> 输入设备拥有完整窗口操作 API（创建/关闭/查询/更新窗口），输出设备仅支持窗口查询 API（列表查询和单个查询）。
 
 ## 3. 数据模型
 
@@ -56,18 +56,18 @@ demo1-common/                           ← 共享数据模型
 | deviceCategory | String | 设备类别，`INPUT`=输入设备，`OUTPUT`=输出设备 |
 | model | String | 设备型号，如 `DS-D2055NH-A` |
 | serialNumber | String | 序列号 |
-| inputChannel1 | String | 输入通道1名称，如 `HDMI-1`，为空表示无该通道 |
-| inputChannel2 | String | 输入通道2名称，如 `HDMI-2`，为空表示无该通道 |
-| outputChannel1 | String | 输出通道1名称，如 `OUT-1`，为空表示无该通道 |
-| outputChannel2 | String | 输出通道2名称，如 `OUT-2`，为空表示无该通道 |
+| inputChannel1 | String | 输入通道1名称，如 `HDMI-1` |
+| inputChannel2 | String | 输入通道2名称，如 `HDMI-2` |
+| outputChannel1 | String | 输出通道1名称，如 `OUT-1` |
+| outputChannel2 | String | 输出通道2名称，如 `OUT-2` |
+| outputChannel3 | String | 输出通道3名称，如 `OUT-3` |
 | maxResolution | String | 最大分辨率，如 `1920x1080` |
 
 > **通道名唯一性：** 同一设备下所有非空通道名不可重复。
 >
-> **设备类型说明：** 设备是单一类型的，由 `deviceCategory` 字段标识（`INPUT`/`OUTPUT`）。
-> - **输入设备（`deviceCategory = "INPUT"`）：** 仅 `inputChannel1` 有值，`outputChannel1`/`outputChannel2` 为空，用于提供信号源
-> - **输出设备（`deviceCategory = "OUTPUT"`）：** 仅 `outputChannel1`/`outputChannel2` 有值，`inputChannel1` 为空，用于大屏绑定显示
-> - 数据模型中同时保留输入/输出通道字段仅为方便，实际使用中按 `deviceCategory` 判断
+> **设备类型说明：** 设备类型由具体拥有哪些通道来决定，不会出现留空字段。
+> - **输入设备（`deviceCategory = "INPUT"`）：** 拥有输入通道（如 `inputChannel1`、`inputChannel2`），用于提供信号源
+> - **输出设备（`deviceCategory = "OUTPUT"`）：** 拥有输出通道（如 `outputChannel1`、`outputChannel2`、`outputChannel3`），用于大屏绑定显示
 
 ### 3.2 SimDeviceStatus — 设备运行状态
 
@@ -79,12 +79,12 @@ demo1-common/                           ← 共享数据模型
 
 ### 3.3 SimWindow — 窗口信息
 
-窗口是管控系统下发到模拟设备的内容展示单元，每个窗口绑定到设备的某个输入通道。窗口操作仅对输入设备有意义。
+窗口是管控系统下发到模拟设备的内容展示单元，每个窗口绑定到设备的某个通道。输入设备绑定输入通道，输出设备绑定输出通道。窗口由管控系统创建并推送到设备，输出设备仅支持查询。
 
 | 字段 | 类型 | 必填 | 不可重复 | 说明 |
 |------|------|:--:|:----:|------|
 | windowId | String | 是 | 是 | 窗口唯一标识，由管控系统生成，全局唯一 |
-| channelName | String | 是 | 否 | 绑定的输入通道名称，必须是该设备已定义的输入通道名之一。同一输入通道可以有多个窗口 |
+| channelName | String | 是 | 否 | 绑定的通道名称，必须是该设备已定义的通道名之一。输入设备校验输入通道，输出设备校验输出通道。同一通道可以有多个窗口 |
 | x | int | 否 | 否 | 窗口左上角 X 坐标，默认 0 |
 | y | int | 否 | 否 | 窗口左上角 Y 坐标，默认 0 |
 | width | int | 否 | 否 | 窗口宽度（像素），默认 1920 |
@@ -108,9 +108,10 @@ demo1-common/                           ← 共享数据模型
 | inputChannel2 | String | 输入通道2名称 |
 | outputChannel1 | String | 输出通道1名称 |
 | outputChannel2 | String | 输出通道2名称 |
+| outputChannel3 | String | 输出通道3名称 |
 
 > **注意：** 能力表中的通道名和 `maxResolution` 与设备信息表共享，更新能力时会自动同步到设备信息表。
-> `inputChannel1`/`inputChannel2`/`outputChannel1`/`outputChannel2` 字段含义同上，按设备类型二选一。
+> `inputChannel1`/`inputChannel2`/`outputChannel1`/`outputChannel2`/`outputChannel3` 字段含义同上，设备类型由具体拥有哪些通道决定。
 
 
 ## 4. 接口列表
@@ -679,7 +680,7 @@ Content-Type: application/json
 | outputChannel2 | OUT-2 |
 | maxResolution | 1920x1080 |
 
-> 输出设备不涉及窗口操作，无窗口 API。
+> 输出设备仅支持窗口查询 API（列表查询和单个查询），窗口由管控系统推送。
 
 ### 6.4 模拟设备4 — 输出设备（端口 8089，UDP 9996）
 
@@ -696,7 +697,7 @@ Content-Type: application/json
 | outputChannel2 | OUT-2 |
 | maxResolution | 1920x1080 |
 
-> 输出设备不涉及窗口操作，无窗口 API。
+> 输出设备仅支持窗口查询 API（列表查询和单个查询），窗口由管控系统推送。
 
 
 ---
@@ -736,10 +737,11 @@ Content-Type: application/json
 | device_category | VARCHAR(20) | 设备类别，`INPUT`=输入设备，`OUTPUT`=输出设备 |
 | model | VARCHAR(100) | 设备型号 |
 | serial_number | VARCHAR(100) | 序列号 |
-| input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
-| input_channel_2 | VARCHAR(100) | 输入通道2名称，为空表示无该通道 |
-| output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
-| output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
+| input_channel_1 | VARCHAR(100) | 输入通道1名称，如 `HDMI-1` |
+| input_channel_2 | VARCHAR(100) | 输入通道2名称，如 `HDMI-2` |
+| output_channel_1 | VARCHAR(100) | 输出通道1名称，如 `OUT-1` |
+| output_channel_2 | VARCHAR(100) | 输出通道2名称，如 `OUT-2` |
+| output_channel_3 | VARCHAR(100) | 输出通道3名称，如 `OUT-3` |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
 
 **DEVICE_CAPABILITY（设备能力表）**
@@ -752,17 +754,18 @@ Content-Type: application/json
 | support_resize | BOOLEAN | 是否支持窗口缩放 |
 | support_overlay | BOOLEAN | 是否支持窗口叠加 |
 | max_resolution | VARCHAR(50) | 最大分辨率 |
-| input_channel_1 | VARCHAR(100) | 输入通道1名称，为空表示无该通道 |
-| input_channel_2 | VARCHAR(100) | 输入通道2名称，为空表示无该通道 |
-| output_channel_1 | VARCHAR(100) | 输出通道1名称，为空表示无该通道 |
-| output_channel_2 | VARCHAR(100) | 输出通道2名称，为空表示无该通道 |
+| input_channel_1 | VARCHAR(100) | 输入通道1名称，如 `HDMI-1` |
+| input_channel_2 | VARCHAR(100) | 输入通道2名称，如 `HDMI-2` |
+| output_channel_1 | VARCHAR(100) | 输出通道1名称，如 `OUT-1` |
+| output_channel_2 | VARCHAR(100) | 输出通道2名称，如 `OUT-2` |
+| output_channel_3 | VARCHAR(100) | 输出通道3名称，如 `OUT-3` |
 
 **DEVICE_WINDOW（窗口表）**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | window_id | VARCHAR(100) | 主键，窗口唯一标识 |
-| channel_name | VARCHAR(100) | 绑定的输入通道名称 |
+| channel_name | VARCHAR(100) | 绑定的通道名称 |
 | x | INT | 窗口 X 坐标，默认 0 |
 | y | INT | 窗口 Y 坐标，默认 0 |
 | width | INT | 窗口宽度，默认 1920 |
@@ -771,7 +774,7 @@ Content-Type: application/json
 | source_url | VARCHAR(500) | 信号源地址 |
 | create_time | VARCHAR(20) | 窗口创建时间 |
 
-> 窗口表仅在输入设备中存在，输出设备不涉及窗口操作，无此表。
+> 所有模拟设备均包含此表。输入设备使用输入通道，输出设备使用输出通道。
 
 ### 7.3 与管控系统的关系
 
@@ -782,8 +785,8 @@ Content-Type: application/json
 | demo1-server（管控系统） | 8085 | 通过 `mvn spring-boot:run` 启动 |
 | demo1-simulator（输入设备1） | 8086 | 1个输入通道，有窗口 API |
 | demo1-simulator2（输入设备2） | 8087 | 2个输入通道，有窗口 API |
-| demo1-simulator3（输出设备1） | 8088 | 2个输出通道，无窗口 API |
-| demo1-simulator4（输出设备2） | 8089 | 2个输出通道，无窗口 API |
+| demo1-simulator3（输出设备1） | 8088 | 2个输出通道，仅窗口查询 API |
+| demo1-simulator4（输出设备2） | 8089 | 3个输出通道，仅窗口查询 API |
 
 管控系统通过 HTTP 请求调用本接口文档中的 API，模拟设备离线时 HTTP 请求失败，管控系统即可检测到设备下线。
 
@@ -805,7 +808,7 @@ java -jar demo1-simulator2.jar
 # 输出设备3：端口 8088，2个输出通道 OUT-1、OUT-2
 java -jar demo1-simulator3.jar
 
-# 输出设备4：端口 8089，2个输出通道 OUT-1、OUT-2
+# 输出设备4：端口 8089，3个输出通道 OUT-1、OUT-2、OUT-3
 java -jar demo1-simulator4.jar
 ```
 
@@ -816,7 +819,7 @@ java -jar demo1-simulator4.jar
 | demo1-simulator | 8086 | 9999 | INPUT | 1个输入：HDMI-1 |
 | demo1-simulator2 | 8087 | 9998 | INPUT | 2个输入：HDMI-1, HDMI-2 |
 | demo1-simulator3 | 8088 | 9997 | OUTPUT | 2个输出：OUT-1, OUT-2 |
-| demo1-simulator4 | 8089 | 9996 | OUTPUT | 2个输出：OUT-1, OUT-2 |
+| demo1-simulator4 | 8089 | 9996 | OUTPUT | 3个输出：OUT-1, OUT-2, OUT-3 |
 
 > 每个进程内的设备信息完全独立，管控系统通过 `baseUrl` 区分不同设备。
 > 如需模拟更多同类型设备，可复制任一模拟器模块，修改 `application.yaml` 中的端口和 UDP 发现端口即可。

@@ -1,0 +1,8 @@
+server:
+  port: 8088
+discovery:
+  port: 9997
+spring:
+  sql:
+    init:
+      data-locations: classpath:data-8088.sql

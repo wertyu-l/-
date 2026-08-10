@@ -44,10 +44,9 @@
           <span class="nav-icon">&#x1f4e6;</span>
           <span class="nav-label">设备管理</span>
         </a>
-        <a class="nav-item disabled">
-          <span class="nav-icon">&#x1f4ca;</span>
-          <span class="nav-label">模块三</span>
-          <span class="nav-badge">待开发</span>
+        <a class="nav-item" data-module="screen">
+          <span class="nav-icon">&#x1f4fa;</span>
+          <span class="nav-label">大屏配置</span>
         </a>
       </nav>
       <div class="sidebar-footer">
@@ -61,6 +60,9 @@
       <!-- 顶栏 -->
       <header class="topbar">
         <h2 class="topbar-title" id="moduleTitle">用户管理</h2>
+        <div class="topbar-actions" id="topbarActions">
+          <button class="mode-switch-btn" id="switchToFrontendBtn" title="切换到前台展示">前台展示</button>
+        </div>
       </header>
 
       <!-- 内容面板 -->
@@ -181,6 +183,94 @@
               条
             </span>
           </div>
+        </div>
+      </div>
+
+      <!-- ==================== 大屏配置面板 ==================== -->
+      <div class="content-panel" id="panel-screen">
+        <div class="content">
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <input type="text" id="screenSearchKeyword" class="search-input" placeholder="搜索大屏名称..." />
+              <button class="btn btn-primary" id="screenSearchBtn">搜索</button>
+              <button class="btn btn-outline" id="screenResetSearchBtn">重置</button>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn btn-primary" id="addScreenBtn">+ 创建大屏</button>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="screenTable">
+              <thead>
+                <tr>
+                  <th>大屏名称</th>
+                  <th>行数</th>
+                  <th>列数</th>
+                  <th>单元分辨率</th>
+                  <th>单元数</th>
+                  <th>窗口数</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="screenTableBody">
+                <tr><td colspan="8" class="table-empty">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination" id="screenPagination">
+            <button class="btn btn-outline btn-sm" id="screenPrevPageBtn">上一页</button>
+            <span class="page-info" id="screenPageInfo">第 1 页 / 共 1 页（共 0 条）</span>
+            <button class="btn btn-outline btn-sm" id="screenNextPageBtn">下一页</button>
+            <span class="page-size-selector">
+              每页
+              <select id="screenPageSizeSelect">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+              </select>
+              条
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 前台展示视图 ==================== -->
+      <div id="frontendView">
+        <!-- 信号源/输出设备面板 -->
+        <div id="sourcePanel">
+          <div class="source-panel-tabs">
+            <button class="source-tab active" data-tab="input" id="tabInputBtn">信号源</button>
+            <button class="source-tab" data-tab="output" id="tabOutputBtn">输出设备</button>
+          </div>
+          <div class="source-panel-body" id="sourcePanelBody">
+            <div class="source-empty">请先选择大屏</div>
+          </div>
+          <div class="source-panel-body" id="outputPanelBody" style="display:none;">
+            <div class="source-empty">请先选择大屏</div>
+          </div>
+        </div>
+
+        <!-- 画布容器 -->
+        <div id="canvasContainer">
+          <div class="canvas-toolbar" id="canvasToolbar" style="display:none;">
+            <button class="btn btn-danger btn-sm" id="clearWindowsBtn">一键清空</button>
+          </div>
+          <div class="frontend-placeholder" id="canvasPlaceholder">
+            <div class="placeholder-icon">&#x1f4fa;</div>
+            <div class="placeholder-text">请先选择大屏</div>
+            <div class="placeholder-hint">在后台管理中创建大屏并绑定设备后即可使用</div>
+            <div class="screen-select-dialog" id="screenSelectDialog" style="display:none;">
+              <h3>选择大屏</h3>
+              <select id="screenSelectDropdown">
+                <option value="">-- 请选择大屏 --</option>
+              </select>
+              <button class="btn btn-primary" id="loadScreenBtn">加载大屏</button>
+            </div>
+          </div>
+          <div id="screenCanvas" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -381,9 +471,117 @@
     </div>
   </div>
 
+  <!-- ==================== 创建大屏弹窗 ==================== -->
+  <div id="screenCreateModal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>创建大屏</h3>
+        <button class="modal-close" id="closeScreenCreateModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="screenCreateForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="screenName">大屏名称 <span class="required">*</span></label>
+              <input type="text" id="screenName" placeholder="请输入大屏名称" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="screenRows">行数 <span class="required">*</span></label>
+              <input type="number" id="screenRows" min="1" max="10" value="2" required />
+            </div>
+            <div class="form-group">
+              <label for="screenCols">列数 <span class="required">*</span></label>
+              <input type="number" id="screenCols" min="1" max="10" value="2" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="screenCellWidth">单元宽度 (px)</label>
+              <input type="number" id="screenCellWidth" min="1" value="1920" />
+            </div>
+            <div class="form-group">
+              <label for="screenCellHeight">单元高度 (px)</label>
+              <input type="number" id="screenCellHeight" min="1" value="1080" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>单元绑定设备 <span class="required">*</span></label>
+            <div class="cell-bind-list" id="cellBindList">
+              <div style="font-size:13px;color:var(--text-muted);padding:10px;">请先设置行数和列数</div>
+            </div>
+          </div>
+        </form>
+        <div id="screenCreateError" class="form-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="cancelScreenCreateBtn">取消</button>
+        <button class="btn btn-primary" id="saveScreenBtn">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 大屏删除确认弹窗 ==================== -->
+  <div id="screenDeleteModal" class="modal-overlay" style="display:none;">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>确认删除</h3>
+        <button class="modal-close" id="closeScreenDeleteModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>确定要删除大屏 <strong id="deleteScreenName"></strong> 吗？此操作不可撤销，将同时删除该大屏下的所有窗口。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="cancelScreenDeleteBtn">取消</button>
+        <button class="btn btn-danger" id="confirmScreenDeleteBtn">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 单元绑定设备弹窗 ==================== -->
+  <div id="cellBindModal" class="modal-overlay" style="display:none;">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>绑定设备通道</h3>
+        <button class="modal-close" id="closeCellBindModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="cellBindForm">
+          <input type="hidden" id="bindScreenId" />
+          <input type="hidden" id="bindCellId" />
+          <div class="form-group">
+            <label>单元位置</label>
+            <span id="bindCellPosition" style="font-weight:500;"></span>
+          </div>
+          <div class="form-group">
+            <label for="bindDeviceSelect">输出设备 <span class="required">*</span></label>
+            <select id="bindDeviceSelect" required>
+              <option value="">-- 请选择输出设备 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="bindChannelSelect">输出通道 <span class="required">*</span></label>
+            <select id="bindChannelSelect" required>
+              <option value="">-- 请先选择设备 --</option>
+            </select>
+          </div>
+        </form>
+        <div id="cellBindError" class="form-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="cancelCellBindBtn">取消</button>
+        <button class="btn btn-primary" id="saveCellBindBtn">绑定</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== Toast 消息 ==================== -->
   <div id="toastContainer" class="toast-container"></div>
 
   <script src="app.js"></script>
+  <script src="screen-paint.js"></script>
+  <script src="screen-interact.js"></script>
+  <script src="signal-source.js"></script>
 </body>
 </html>

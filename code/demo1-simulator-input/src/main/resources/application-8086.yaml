@@ -1,0 +1,8 @@
+server:
+  port: 8086
+discovery:
+  port: 9999
+spring:
+  sql:
+    init:
+      data-locations: classpath:data-8086.sql

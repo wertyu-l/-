@@ -669,6 +669,23 @@ public class WindowServiceImpl implements WindowService {
         }
     }
 
+    /**
+     * 设备离线后，将其相关窗口标记为 failed + 降级
+     */
+    @Override
+    public void markFailedForDevice(DevicePageVO device) {
+        if ("INPUT".equals(device.getDeviceCategory())) {
+            windowMapper.markFailedByDeviceId(device.getId(), "failed", 1);
+        } else {
+            List<Long> screenIds = screenMapper.findScreenIdsByDeviceId(device.getId());
+            if (screenIds != null) {
+                for (Long screenId : screenIds) {
+                    windowMapper.markFailedByScreenId(screenId, "failed", 1);
+                }
+            }
+        }
+    }
+
     // ==================== 辅助方法 ====================
 
     private ScreenWindowVO toVO(ScreenWindow sw, DevicePageVO device) {

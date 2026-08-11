@@ -216,9 +216,17 @@ public class DeviceServiceImpl implements DeviceService {
                     }
                     deviceMapper.updateOnline(device.getId(), 1, now);
                 } else {
+                    // 在线 → 离线：标记窗口为 failed + 降级
+                    if (device.getOnline() != null && device.getOnline() == 1) {
+                        windowService.markFailedForDevice(device);
+                    }
                     deviceMapper.updateOnline(device.getId(), 0, now);
                 }
             } catch (Exception e) {
+                // 在线 → 离线（连接异常）：标记窗口为 failed + 降级
+                if (device.getOnline() != null && device.getOnline() == 1) {
+                    windowService.markFailedForDevice(device);
+                }
                 deviceMapper.updateOnline(device.getId(), 0, now);
             }
         }

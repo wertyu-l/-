@@ -28,6 +28,10 @@ public class SimDeviceManager {
         return deviceInfo;
     }
 
+    public SimDeviceInfo getDeviceInfoFromDb() {
+        return repo.loadDeviceInfo();
+    }
+
     public SimDeviceStatus getDeviceStatus() {
         SimDeviceStatus status = new SimDeviceStatus();
         status.setOnline(true);
@@ -38,6 +42,10 @@ public class SimDeviceManager {
 
     public SimDeviceCapability getDeviceCapability() {
         return deviceCapability;
+    }
+
+    public SimDeviceCapability getDeviceCapabilityFromDb() {
+        return repo.loadDeviceCapability();
     }
 
     public SimDeviceCapability updateDeviceCapability(SimDeviceCapability newCapability) {

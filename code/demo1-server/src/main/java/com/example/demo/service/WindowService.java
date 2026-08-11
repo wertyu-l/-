@@ -34,4 +34,7 @@ public interface WindowService {
     /** 设备恢复上线后，标记相关窗口为 pending 以触发重同步 */
     void markPendingForDevice(DevicePageVO device);
 
+    /** 设备离线后，标记相关窗口为 failed + 降级 */
+    void markFailedForDevice(DevicePageVO device);
+
 }

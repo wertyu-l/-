@@ -53,4 +53,14 @@ public interface WindowMapper {
     int updateSyncStatusByScreenId(@Param("screenId") Long screenId,
                                    @Param("syncStatus") String syncStatus);
 
+    /** 设备离线：按输入设备标记窗口为失败+降级 */
+    int markFailedByDeviceId(@Param("deviceId") Long deviceId,
+                             @Param("syncStatus") String syncStatus,
+                             @Param("degraded") Integer degraded);
+
+    /** 设备离线：按屏幕标记窗口为失败+降级 */
+    int markFailedByScreenId(@Param("screenId") Long screenId,
+                             @Param("syncStatus") String syncStatus,
+                             @Param("degraded") Integer degraded);
+
 }

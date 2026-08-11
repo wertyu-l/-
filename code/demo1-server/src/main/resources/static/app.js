@@ -440,6 +440,81 @@ var AppMode = {
   currentScreenId: null,
 };
 
+// ---------- 窗口状态轮询 ----------
+var _statusPollTimer = null;
+
+function startStatusPolling() {
+  stopStatusPolling();
+  _statusPollTimer = setInterval(pollWindowAndCellStatus, 10000);
+}
+
+function stopStatusPolling() {
+  if (_statusPollTimer) {
+    clearInterval(_statusPollTimer);
+    _statusPollTimer = null;
+  }
+}
+
+async function pollWindowAndCellStatus() {
+  if (AppMode.current !== 'frontend' || !AppMode.currentScreenId) return;
+
+  try {
+    // 轮询窗口同步状态
+    var winResult = await WindowApi.list(AppMode.currentScreenId);
+    var serverWindows = winResult.data || [];
+    for (var i = 0; i < serverWindows.length; i++) {
+      var sw = serverWindows[i];
+      if (typeof ScreenPaint === 'undefined' || !ScreenPaint.getWindowById) continue;
+      var local = ScreenPaint.getWindowById(sw.windowId);
+      if (!local) continue;
+      if (local.syncStatus !== sw.syncStatus || local.degraded !== sw.degraded) {
+        ScreenPaint.updateWindow(sw.windowId, {
+          syncStatus: sw.syncStatus,
+          degraded: sw.degraded,
+        });
+      }
+    }
+  } catch (_) { /* 静默 */ }
+
+  try {
+    // 轮询设备在线状态 → 更新网格单元样式
+    var detailResult = await ScreenApi.getDetail(AppMode.currentScreenId);
+    var detail = detailResult.data;
+    if (!detail || !detail.cells) return;
+
+    if (typeof ScreenPaint !== 'undefined') {
+      ScreenPaint.cells = detail.cells;
+      ScreenPaint.currentScreen = detail;
+    }
+
+    var gridEl = document.querySelector('.canvas-grid');
+    if (!gridEl) return;
+    var cellEls = gridEl.querySelectorAll('.canvas-cell');
+
+    var rows = detail.rowsCount;
+    var cols = detail.colsCount;
+    var idx = 0;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        if (idx >= cellEls.length) break;
+        var cellEl = cellEls[idx];
+        var cell = null;
+        if (typeof ScreenPaint !== 'undefined' && ScreenPaint.getCellAt) {
+          cell = ScreenPaint.getCellAt(r, c);
+        }
+
+        cellEl.classList.remove('cell-bound', 'cell-offline', 'cell-unbound');
+        if (cell && cell.deviceId) {
+          cellEl.classList.add(cell.online === 1 ? 'cell-bound' : 'cell-offline');
+        } else {
+          cellEl.classList.add('cell-unbound');
+        }
+        idx++;
+      }
+    }
+  } catch (_) { /* 静默 */ }
+}
+
 // ---------- 大屏分页状态 ----------
 var ScreenPageState = {
   page: 1,
@@ -1226,6 +1301,7 @@ function switchToFrontend() {
 }
 
 function switchToBackend() {
+  stopStatusPolling();
   AppMode.current = 'backend';
   AppMode.currentScreenId = null;
   sessionStorage.removeItem('frontend_screen_id');
@@ -1324,6 +1400,9 @@ async function loadFrontendScreen(screenId) {
 
     // 更新顶栏大屏选择
     updateTopbarScreenSelector(screenDetail);
+
+    // 启动窗口状态轮询
+    startStatusPolling();
 
   } catch (err) {
     showToast('加载大屏失败: ' + err.message, 'error');

@@ -9,7 +9,7 @@ spring:
     name: demo1-simulator-output
 
   datasource:
-    url: jdbc:h2:mem:simulator_output
+    url: jdbc:h2:file:./data/simulator_output
     driver-class-name: org.h2.Driver
     username: sa
     password:

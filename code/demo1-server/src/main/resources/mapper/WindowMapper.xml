@@ -111,4 +111,14 @@
         WHERE screen_id = #{screenId} AND sync_status = 'synced'
     </update>
 
+    <update id="markFailedByDeviceId">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, degraded = #{degraded}, update_time = CURRENT_TIMESTAMP
+        WHERE device_id = #{deviceId} AND sync_status = 'synced'
+    </update>
+
+    <update id="markFailedByScreenId">
+        UPDATE SCREEN_WINDOW SET sync_status = #{syncStatus}, degraded = #{degraded}, update_time = CURRENT_TIMESTAMP
+        WHERE screen_id = #{screenId} AND sync_status = 'synced'
+    </update>
+
 </mapper>

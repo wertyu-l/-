@@ -3,6 +3,8 @@ server:
 discovery:
   port: 9999
 spring:
+  datasource:
+    url: jdbc:h2:file:./data/simulator_input_8086
   sql:
     init:
       data-locations: classpath:data-8086.sql

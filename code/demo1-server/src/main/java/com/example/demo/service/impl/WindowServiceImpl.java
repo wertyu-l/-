@@ -121,7 +121,7 @@ public class WindowServiceImpl implements WindowService {
         windowMapper.insert(sw);
 
         // 跨单元同步到设备
-        syncToCoveredDevices(sw, screen, false);
+        syncToCoveredDevices(sw, screen, null);
 
         DevicePageVO device = deviceMapper.findById(request.getDeviceId());
         return toVO(windowMapper.findByWindowId(request.getWindowId()), device);
@@ -191,6 +191,9 @@ public class WindowServiceImpl implements WindowService {
             validateUpdateCapabilities(tempSw, screen, moveRequested, resizeRequested);
         }
 
+        // 保存旧位置覆盖的单元列表，更新后再精准清理旧子窗口
+        List<CellCoverage> oldCoverages = calcCoverages(sw, screen);
+
         windowMapper.updatePosition(windowId, newX, newY, newW, newH);
 
         // 刷新 sw 对象
@@ -199,8 +202,8 @@ public class WindowServiceImpl implements WindowService {
         sw.setWidth(newW);
         sw.setHeight(newH);
 
-        // 跨单元同步到设备
-        syncToCoveredDevices(sw, screen, true);
+        // 跨单元同步到设备（传入旧覆盖单元用于 Phase 1 精准关闭）
+        syncToCoveredDevices(sw, screen, oldCoverages);
 
         DevicePageVO device = deviceMapper.findById(sw.getDeviceId());
         return toVO(windowMapper.findByWindowId(windowId), device);
@@ -530,22 +533,28 @@ public class WindowServiceImpl implements WindowService {
      * @param screen    大屏
      * @param isUpdate  是否更新（true=先关闭旧子窗口再创建新的）
      */
-    private void syncToCoveredDevices(ScreenWindow sw, Screen screen, boolean isUpdate) {
-        List<CellCoverage> coverages = calcCoverages(sw, screen);
-        if (coverages.isEmpty()) return;
+    /**
+     * 将窗口按覆盖单元拆分并同步到各设备。
+     *
+     * @param sw            窗口（含最新位置/大小）
+     * @param screen        大屏
+     * @param oldCoverages  更新前的覆盖单元列表；为 null 表示新建窗口
+     */
+    private void syncToCoveredDevices(ScreenWindow sw, Screen screen, List<CellCoverage> oldCoverages) {
+        List<CellCoverage> newCoverages = calcCoverages(sw, screen);
+        if (newCoverages.isEmpty()) return;
 
+        boolean isUpdate = oldCoverages != null;
         boolean anyOffline = false;
         int successCount = 0;
 
-        // Phase 1: 更新时先关闭所有在线设备上的旧子窗口（离线设备跳过，避免无意义超时阻塞）
+        // Phase 1: 更新时先关闭旧位置覆盖的设备上的子窗口（只关旧覆盖的设备，不关整个大屏所有设备）
         if (isUpdate) {
             java.util.Set<Long> closedDevices = new java.util.HashSet<>();
-            List<CellVO> allCells = screenMapper.findCellsByScreenId(screen.getId());
-            for (CellVO cell : allCells) {
-                if (cell.getDeviceId() == null) continue;
-                if (closedDevices.contains(cell.getDeviceId())) continue;
-                closedDevices.add(cell.getDeviceId());
-                DevicePageVO dev = deviceMapper.findById(cell.getDeviceId());
+            for (CellCoverage cov : oldCoverages) {
+                if (closedDevices.contains(cov.deviceId)) continue;
+                closedDevices.add(cov.deviceId);
+                DevicePageVO dev = deviceMapper.findById(cov.deviceId);
                 if (dev != null && dev.getOnline() != null && dev.getOnline() == 1) {
                     try { deviceDriver.closeWindow(buildEndpoint(dev), sw.getWindowId()); } catch (Exception ignored) {}
                 }
@@ -557,8 +566,8 @@ public class WindowServiceImpl implements WindowService {
             }
         }
 
-        // Phase 2: 为每个覆盖单元创建子窗口
-        for (CellCoverage cov : coverages) {
+        // Phase 2: 为每个覆盖单元创建子窗口（跳过离线设备）
+        for (CellCoverage cov : newCoverages) {
             DevicePageVO dev = deviceMapper.findById(cov.deviceId);
             if (dev == null) continue;
 
@@ -590,10 +599,19 @@ public class WindowServiceImpl implements WindowService {
         }
 
         // Phase 3: 推送完整窗口到输入设备（信号源）
-        int totalTargets = coverages.size() + 1; // 输出设备 + 输入设备
+        // 计算实际同步目标数——仅统计在线设备，离线设备不计入 totalTargets
+        int onlineOutputDevices = 0;
+        for (CellCoverage cov : newCoverages) {
+            DevicePageVO dev = deviceMapper.findById(cov.deviceId);
+            if (dev != null && dev.getOnline() != null && dev.getOnline() == 1) {
+                onlineOutputDevices++;
+            }
+        }
         DevicePageVO sourceDev = deviceMapper.findById(sw.getDeviceId());
+        boolean sourceOnline = sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1;
+        int totalTargets = onlineOutputDevices + (sourceOnline ? 1 : 0);
+
         if (sourceDev != null) {
-            boolean sourceOnline = sourceDev.getOnline() != null && sourceDev.getOnline() == 1;
             if (sourceOnline) {
                 try {
                     DeviceEndpoint endpoint = buildEndpoint(sourceDev);
@@ -618,12 +636,11 @@ public class WindowServiceImpl implements WindowService {
         }
 
         // 更新同步状态和降级标记
-        if (successCount == totalTargets) {
+        // 关键：即使所有在线设备都同步成功，只要有离线设备未推送，就必须保持 degraded=1
+        if (!anyOffline && totalTargets > 0 && successCount == totalTargets) {
             windowMapper.updateDegraded(sw.getWindowId(), "synced", 0);
-        } else if (anyOffline || successCount < totalTargets) {
-            windowMapper.updateDegraded(sw.getWindowId(), "pending", 1);
         } else {
-            windowMapper.updateSyncStatus(sw.getWindowId(), "synced");
+            windowMapper.updateDegraded(sw.getWindowId(), "pending", 1);
         }
     }
 
@@ -646,7 +663,8 @@ public class WindowServiceImpl implements WindowService {
             Screen screen = screenMapper.findById(w.getScreenId());
             if (screen == null) continue;
 
-            syncToCoveredDevices(current, screen, true);
+            // 重试：先关闭旧子窗口再重建（使用当前位置作为 oldCoverages 以触发 Phase 1 清理）
+            syncToCoveredDevices(current, screen, calcCoverages(current, screen));
         }
     }
 
@@ -677,10 +695,45 @@ public class WindowServiceImpl implements WindowService {
         if ("INPUT".equals(device.getDeviceCategory())) {
             windowMapper.markFailedByDeviceId(device.getId(), "failed", 1);
         } else {
+            // 输出设备离线：只标记覆盖了该设备单元的那些窗口，而非整个大屏的所有窗口
             List<Long> screenIds = screenMapper.findScreenIdsByDeviceId(device.getId());
             if (screenIds != null) {
                 for (Long screenId : screenIds) {
-                    windowMapper.markFailedByScreenId(screenId, "failed", 1);
+                    markWindowsOnDeviceCells(screenId, device.getId());
+                }
+            }
+        }
+    }
+
+    /**
+     * 将覆盖了指定输出设备单元且处于 synced 状态的窗口标记为 failed + 降级。
+     * <p>
+     * 与 {@link #markPendingForDevice} 配对使用：
+     * 设备离线时只影响真正依赖该设备的窗口，不影响同大屏上其他窗口。
+     */
+    private void markWindowsOnDeviceCells(Long screenId, Long deviceId) {
+        Screen screen = screenMapper.findById(screenId);
+        if (screen == null) return;
+
+        List<CellVO> cells = screenMapper.findCellsByScreenId(screenId);
+        List<ScreenWindowVO> windows = windowMapper.findByScreenId(screenId);
+
+        int cellW = screen.getCellWidth();
+        int cellH = screen.getCellHeight();
+
+        for (ScreenWindowVO win : windows) {
+            if (!"synced".equals(win.getSyncStatus())) continue;
+
+            for (CellVO cell : cells) {
+                if (!deviceId.equals(cell.getDeviceId())) continue;
+                if (windowCoversCell(
+                        win.getX() != null ? win.getX() : 0,
+                        win.getY() != null ? win.getY() : 0,
+                        win.getWidth() != null ? win.getWidth() : 960,
+                        win.getHeight() != null ? win.getHeight() : 540,
+                        cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
+                    windowMapper.updateDegraded(win.getWindowId(), "failed", 1);
+                    break; // 找到一个重叠单元就足够
                 }
             }
         }

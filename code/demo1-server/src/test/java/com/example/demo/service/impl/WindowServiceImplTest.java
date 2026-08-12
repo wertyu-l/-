@@ -305,16 +305,75 @@ class WindowServiceImplTest {
     }
 
     /**
-     * 输出设备离线时应标记相关大屏窗口为 failed + 降级
+     * 输出设备离线时只应标记覆盖了该设备单元的窗口，而非整个大屏的所有窗口。
+     * 这是修复的核心：避免一个设备离线影响同大屏上不相关的窗口。
      */
     @Test
-    void markFailedForDevice_outputDevice_shouldMarkFailedByScreen() {
+    void markFailedForDevice_outputDevice_shouldOnlyMarkWindowsCoveringItsCells() {
         device.setDeviceCategory("OUTPUT");
         when(screenMapper.findScreenIdsByDeviceId(device.getId()))
                 .thenReturn(List.of(SCREEN_ID));
+        when(screenMapper.findById(SCREEN_ID)).thenReturn(screen);
+
+        // 单元 [0,0] 绑定到此输出设备
+        CellVO cell = new CellVO();
+        cell.setDeviceId(device.getId());
+        cell.setRowIndex(0);
+        cell.setColIndex(0);
+        when(screenMapper.findCellsByScreenId(SCREEN_ID))
+                .thenReturn(List.of(cell));
+
+        // 窗口覆盖单元 [0,0]（x=0,y=0,w=960,h=540，在 1920×1080 单元内，矩形相交）
+        ScreenWindowVO win = new ScreenWindowVO();
+        win.setWindowId(WINDOW_ID);
+        win.setSyncStatus("synced");
+        win.setX(0);
+        win.setY(0);
+        win.setWidth(960);
+        win.setHeight(540);
+        when(windowMapper.findByScreenId(SCREEN_ID))
+                .thenReturn(List.of(win));
 
         windowService.markFailedForDevice(device);
 
-        verify(windowMapper).markFailedByScreenId(SCREEN_ID, "failed", 1);
+        // 只标记了真正覆盖该设备单元的窗口
+        verify(windowMapper).updateDegraded(WINDOW_ID, "failed", 1);
+        // 不再调用全屏标记
+        verify(windowMapper, never()).markFailedByScreenId(anyLong(), anyString(), anyInt());
+    }
+
+    /**
+     * 输出设备离线时，不覆盖该设备的窗口不应被标记
+     */
+    @Test
+    void markFailedForDevice_outputDevice_shouldNotMarkWindowsOutsideItsCells() {
+        device.setDeviceCategory("OUTPUT");
+        when(screenMapper.findScreenIdsByDeviceId(device.getId()))
+                .thenReturn(List.of(SCREEN_ID));
+        when(screenMapper.findById(SCREEN_ID)).thenReturn(screen);
+
+        // 单元 [1,1] 绑定到此输出设备
+        CellVO cell = new CellVO();
+        cell.setDeviceId(device.getId());
+        cell.setRowIndex(1);
+        cell.setColIndex(1);
+        when(screenMapper.findCellsByScreenId(SCREEN_ID))
+                .thenReturn(List.of(cell));
+
+        // 窗口在单元 [0,0]（不覆盖单元 [1,1]）
+        ScreenWindowVO win = new ScreenWindowVO();
+        win.setWindowId(WINDOW_ID);
+        win.setSyncStatus("synced");
+        win.setX(0);
+        win.setY(0);
+        win.setWidth(960);
+        win.setHeight(540);
+        when(windowMapper.findByScreenId(SCREEN_ID))
+                .thenReturn(List.of(win));
+
+        windowService.markFailedForDevice(device);
+
+        // 窗口不覆盖该设备的单元，不应被标记
+        verify(windowMapper, never()).updateDegraded(anyString(), anyString(), anyInt());
     }
 }

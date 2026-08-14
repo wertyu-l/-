@@ -25,13 +25,13 @@ TLV 模拟设备是独立 Java 程序，共有 2 个模拟器模块，每个模�
 **demo1-common（V4 新增编解码器）**
 
 ```
-demo1-common/src/main/java/com/example/demo/codec/   ← V4 新增
+demo1-common/src/main/java/com/example/demo/codec/   ←新增
     ├── TlvFrame.java            ← TLV 外层帧定义（Type + Length + Value）
-    ├── TlvTag.java              ← 字段 Tag 常量（内层字段标识，V4.1 新增）
+    ├── TlvTag.java              ← 字段 Tag 常量（内层字段标识，新增）
     ├── TlvCommand.java          ← 命令类型常量
     ├── TlvEncoder.java          ← 外层帧编码器：TlvFrame → byte[]
     ├── TlvDecoder.java          ← 外层帧解码器：byte[] → TlvFrame
-    └── TlvFieldCodec.java       ← 字段级编解码器（内层 TLV 编解码，V4.1 新增）
+    └── TlvFieldCodec.java       ← 字段级编解码器（内层 TLV 编解码，新增）
 ```
 
 > 管控系统的 `TlvDeviceDriver` 编请求包、模拟器的 `TlvServer` 解请求包，两边都需要编解码，放在公共模块避免重复。
@@ -88,32 +88,8 @@ demo1-simulator-tlv-output/
 demo1-server/src/main/java/com/example/demo/driver/
     ├── DeviceDriver.java          (已有)
     ├── RestDeviceDriver.java      (已有)
-    └── TlvDeviceDriver.java       (V4 新增 - UDP + TLV 驱动)
+    └── TlvDeviceDriver.java       (新增 - UDP + TLV 驱动)
 ```
-
-### 2.2 依赖关系
-
-```text
-管控系统（demo1-server）
-    DeviceDriver (接口)
-        ├── RestDeviceDriver   → HTTP + JSON
-        └── TlvDeviceDriver    → UDP + TLV
-                ├── TlvEncoder / TlvDecoder  → demo1-common/codec/
-                └── UDP Socket → TLV 模拟设备
-
-TLV 模拟设备（demo1-simulator-tlv-input / demo1-simulator-tlv-output）
-    TlvServer (UDP 监听)
-        ├── TlvEncoder / TlvDecoder  → demo1-common/codec/
-        ├── GetInfoHandler
-        ├── GetStatusHandler
-        ├── CreateWindowHandler（仅输出设备）
-        ├── UpdateWindowHandler（仅输出设备）
-        ├── CloseWindowHandler（仅输出设备）
-        ├── NotifyWindowHandler（仅输入设备）
-        └── SimDeviceManager
-                └── DeviceConfig → JSON 配置文件
-```
-
 ---
 
 ## 3. 设备配置
@@ -349,7 +325,7 @@ public class TlvFrame {
 
 ### 4.6 TlvTag — 字段 Tag 常量
 
-位于 `demo1-common` 的 `codec/` 包下，V4.1 新增。定义内层 TLV 每个业务字段的 Tag 编号。
+位于 `demo1-common` 的 `codec/` 包下。定义内层 TLV 每个业务字段的 Tag 编号。
 
 **Tag 编码规则：**
 
@@ -399,7 +375,7 @@ public class TlvTag {
 
 ### 4.7 TlvCommand — 命令类型常量
 
-位于 `demo1-common` 的 `codec/` 包下，V4 新增。
+位于 `demo1-common` 的 `codec/` 包下。
 
 ```java
 public class TlvCommand {
@@ -1015,7 +991,7 @@ Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
 
 **空值/可选字段处理：** 可选字段（如 `x`、`y`、`width`、`height`）不传时直接不编码，接收方按默认值处理。空字符串编码为 Length=0、Value 为空。
 
-> V4 第一版不引入 CRC 校验，协议保持简单。外层用 2+2 字节头（Type+Length），内层用 1+1 字节头（Tag+Length）——外层命令空间大、Value 可能超过 255 字节；内层单字段通常不超过 255 字节，1 字节头节省开销。
+> 外层用 2+2 字节头（Type+Length），内层用 1+1 字节头（Tag+Length）——外层命令空间大、Value 可能超过 255 字节；内层单字段通常不超过 255 字节，1 字节头节省开销。
 
 ### 7.5 编解码器设计
 
@@ -1061,7 +1037,7 @@ public class TlvDecoder {
 }
 ```
 
-**TlvFieldCodec.java（V4.1 新增）**
+**TlvFieldCodec.java**
 
 ```java
 public class TlvFieldCodec {

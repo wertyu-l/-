@@ -1,4 +1,4 @@
-# TLV 模拟设备设计文档
+﻿# TLV 模拟设备设计文档
 
 ## 1. 概述
 
@@ -20,7 +20,7 @@ TLV 模拟设备是 V4 阶段新增的**第二类异构设备**，通过 UDP + T
 
 ### 2.1 文件结构
 
-TLV 模拟设备是独立 Java 程序，共有 2 个模拟器模块，每个模块可通过命令行参数启动多个进程，每个进程代表一台设备。数据模型与管控系统共享 `demo1-common`，编解码器也放在 `demo1-common` 中供模拟器和管控系统共用。
+TLV 模拟设备是独立 Java 程序，共有 2 个模拟器模块，通过 `main` 方法启动，命令行参数传入配置文件和端口号，每个进程代表一台设备。数据模型与管控系统共享 `demo1-common`，编解码器也放在 `demo1-common` 中供模拟器和管控系统共用。
 
 **demo1-common（V4 新增编解码器）**
 
@@ -45,6 +45,7 @@ demo1-simulator-tlv-input/
     └── device-8091.json                ← TLV 输入设备-2 配置（2个输入通道 HDMI-1, HDMI-2）
 
 └── src/main/java/com/example/demo/simulator/tlv/input/
+    ├── SimulatorApplication.java       ← 程序入口（main 方法，读配置，启动 TlvServer）
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
@@ -66,6 +67,7 @@ demo1-simulator-tlv-output/
     └── device-8093.json                ← TLV 输出设备-2 配置（3个输出通道，maxWindows=6）
 
 └── src/main/java/com/example/demo/simulator/tlv/output/
+    ├── SimulatorApplication.java       ← 程序入口（main 方法，读配置，启动 TlvServer）
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
@@ -903,7 +905,7 @@ DeviceDriver.getInfo(endpoint)
 
 ### 7.1 默认设备
 
-系统提供 4 台 TLV 模拟设备，通过命令行参数启动不同进程。每台设备进程启动后自动初始化，管控系统启动后即可直接查询。
+系统提供 4 台 TLV 模拟设备，通过 `main` 方法启动不同进程。每台设备进程启动后自动初始化，管控系统启动后即可直接查询。
 
 | 模块 |  端口  | UDP端口 | UDP发现 | 类别 | 通道 | maxWindows |
 |------|:----:|:-----:|:-----:|:--:|------|:--:|
@@ -930,20 +932,86 @@ DeviceDriver.getInfo(endpoint)
 | TLV 输出设备-1（端口 8092） | `device-8092.json` |
 | TLV 输出设备-2（端口 8093） | `device-8093.json` |
 
-### 7.3 多设备模拟
+### 7.3 启动方式
 
-每个模块通过命令行参数指定配置文件启动多个进程，**一个进程 = 一台设备**。添加设备只需新增 JSON 配置文件并启动新进程：
+通过 `main` 方法启动，命令行参数传入配置文件和端口号，**一个进程 = 一台设备**。
+
+**SimulatorApplication.java（输入设备）：**
+
+```java
+public class SimulatorApplication {
+    public static void main(String[] args) {
+        String configPath = args[0];   // 配置文件路径，如 device-8090.json
+        int port = Integer.parseInt(args[1]);  // UDP 端口号，如 8090
+
+        // 1. 从 JSON 加载设备配置
+        DeviceConfig config = DeviceConfig.load(configPath);
+
+        // 2. 创建并启动 TlvServer
+        TlvServer server = new TlvServer(config, port);
+        server.registerHandler(0x0001, new GetInfoHandler(config));
+        server.registerHandler(0x0002, new GetStatusHandler(config));
+        server.registerHandler(0x0010, new CreateWindowHandler(config));
+        // ... 注册其他 Handler
+
+        // 3. 启动 UDP 监听（死循环 recv，阻塞当前线程）
+        server.start();
+    }
+}
+```
+
+**多设备启动：** 同一份代码，通过命令行参数传入不同配置启动多个进程，添加设备只需新增 JSON 配置文件并启动新进程：
 
 ```bash
 # TLV 输入设备模块：启动 2 个进程
-java -jar demo1-simulator-tlv-input.jar --config device-8090.json  # TLV 输入设备-1
-java -jar demo1-simulator-tlv-input.jar --config device-8091.json  # TLV 输入设备-2
+java -jar demo1-simulator-tlv-input.jar device-8090.json 8090  # TLV 输入设备-1
+java -jar demo1-simulator-tlv-input.jar device-8091.json 8091  # TLV 输入设备-2
 
 # TLV 输出设备模块：启动 2 个进程
-java -jar demo1-simulator-tlv-output.jar --config device-8092.json  # TLV 输出设备-1
-java -jar demo1-simulator-tlv-output.jar --config device-8093.json  # TLV 输出设备-2
+java -jar demo1-simulator-tlv-output.jar device-8092.json 8092  # TLV 输出设备-1
+java -jar demo1-simulator-tlv-output.jar device-8093.json 8093  # TLV 输出设备-2
 ```
 
+> **IDEA 开发调试：** 在 IDEA 中创建多个 Run Configuration，每个指定不同的 Program arguments（如 `device-8090.json 8090`），即可同时调试多台设备。
+
+
+### 7.3.1 TlvServer 设计
+
+`TlvServer` 是模拟设备的核心，负责 UDP 监听和命令分发。编解码器（`TlvEncoder`、`TlvDecoder`、`TlvFieldCodec`）已在 `demo1-common` 中实现，`TlvServer` 只需调用即可。
+
+#### 核心职责
+
+- 监听指定 UDP 端口，接收管控系统下发的 TLV 命令帧
+- 根据命令类型（Type 字段）将请求分发到对应的命令处理器（CmdHandler）
+- 将处理器返回的响应字节序列通过 UDP 原路发回
+
+#### 核心组件
+
+| 组件 | 说明 |
+|------|------|
+| **TlvServer** | UDP 服务器，持有 `DeviceConfig` 和 `handlerMap`（命令号 → 处理器映射），提供 `registerHandler()` 注册处理器、`start()` 启动死循环监听 |
+| **CmdHandler** | 命令处理器接口，定义 `handle(byte[] value)` 方法，接收内层 Value 字节序列，返回响应字节序列 |
+| **具体 Handler** | 每个命令对应一个实现类（如 `GetInfoHandler`、`CreateWindowHandler`），内部完成：解码请求 → 业务处理 → 编码响应 |
+
+#### 请求处理流程
+
+```
+UDP 收包 → TlvDecoder 解码外层帧（拿到 Type、Value）
+    → handlerMap 根据 Type 查找对应 CmdHandler
+    → CmdHandler.handle(Value) 处理请求
+        → 内部：TlvFieldCodec 解码 Value 中各字段
+        → 业务逻辑处理
+        → TlvFieldCodec 编码响应字段 → TlvEncoder 编码外层帧
+    → UDP 发送响应帧
+```
+
+#### 设计要点
+
+- `main` 方法负责读取配置、创建 Handler、注册到 `TlvServer`；`TlvServer.start()` 启动死循环监听 UDP 端口
+- 收到数据后根据命令号从 `handlerMap` 取出对应 Handler 执行
+- Handler 内部完成解码 → 业务处理 → 编码 → 返回响应
+- 整个链路无 Spring Boot 依赖，纯 Java 标准库实现
+- 新增命令只需新增一个 CmdHandler 实现类并注册即可，无需修改 TlvServer 核心代码
 ### 7.4 TLV 协议帧格式
 
 #### 7.4.1 外层帧（命令级）
@@ -1104,10 +1172,10 @@ TAG_ERROR_MSG(0x0C) = 错误描述  ← string
 | 模块                  | 端口 | 说明 |
 |---------------------|------|------|
 | demo1-server（管控系统）  | 8085 | 通过 `mvn spring-boot:run` 启动 |
-| TLV 输入设备-1（端口 8090） | 8090 | 1个输入通道，仅查询接口 + 窗口信息反馈 |
-| TLV 输入设备-2（端口 8091） | 8091 | 2个输入通道，仅查询接口 + 窗口信息反馈 |
-| TLV 输出设备-1（端口 8092） | 8092 | 2个输出通道，创建/关闭/更新/查询窗口 |
-| TLV 输出设备-2（端口 8093） | 8093 | 3个输出通道，创建/关闭/更新/查询窗口 |
+| TLV 输入设备-1（端口 8090） | 8090 | `java -jar` + 命令行参数启动，1个输入通道，仅查询接口 + 窗口信息反馈 |
+| TLV 输入设备-2（端口 8091） | 8091 | `java -jar` + 命令行参数启动，2个输入通道，仅查询接口 + 窗口信息反馈 |
+| TLV 输出设备-1（端口 8092） | 8092 | `java -jar` + 命令行参数启动，2个输出通道，创建/关闭/更新/查询窗口 |
+| TLV 输出设备-2（端口 8093） | 8093 | `java -jar` + 命令行参数启动，3个输出通道，创建/关闭/更新/查询窗口 |
 
 ```text
 DeviceDriver (接口)

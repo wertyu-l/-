@@ -7,7 +7,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,14 +43,10 @@ public class DeviceRepository {
 
     public SimDeviceCapability loadDeviceCapability() {
         return jdbc.queryForObject(
-                "SELECT support_move, support_resize, support_overlay, max_resolution, " +
-                        "channel_count, input_channel_1, input_channel_2, input_channel_3, " +
+                "SELECT max_resolution, channel_count, input_channel_1, input_channel_2, input_channel_3, " +
                         "input_channel_4, input_channel_5 FROM DEVICE_CAPABILITY LIMIT 1",
                 (rs, rowNum) -> {
                     SimDeviceCapability cap = new SimDeviceCapability();
-                    cap.setSupportMove(rs.getBoolean("support_move"));
-                    cap.setSupportResize(rs.getBoolean("support_resize"));
-                    cap.setSupportOverlay(rs.getBoolean("support_overlay"));
                     cap.setMaxResolution(rs.getString("max_resolution"));
                     cap.setChannelCount(rs.getInt("channel_count"));
                     cap.setInputChannel1(rs.getString("input_channel_1"));
@@ -64,11 +59,9 @@ public class DeviceRepository {
     }
 
     public void updateCapability(SimDeviceCapability cap) {
-        jdbc.update("UPDATE DEVICE_CAPABILITY SET support_move=?, support_resize=?, " +
-                        "support_overlay=?, max_resolution=?, channel_count=?, " +
+        jdbc.update("UPDATE DEVICE_CAPABILITY SET max_resolution=?, channel_count=?, " +
                         "input_channel_1=?, input_channel_2=?, input_channel_3=?, " +
                         "input_channel_4=?, input_channel_5=? WHERE id=1",
-                cap.isSupportMove(), cap.isSupportResize(), cap.isSupportOverlay(),
                 cap.getMaxResolution(), cap.getChannelCount(),
                 cap.getInputChannel1(), cap.getInputChannel2(), cap.getInputChannel3(),
                 cap.getInputChannel4(), cap.getInputChannel5());
@@ -89,41 +82,20 @@ public class DeviceRepository {
         return new ArrayList<>(windowMap.values());
     }
 
-    public SimWindow findWindowById(String windowId) {
-        for (SimWindow w : windowMap.values()) {
-            if (w.getWindowId().equals(windowId)) {
-                return w;
-            }
-        }
-        return null;
-    }
-
-    public SimWindow findByWindowIdAndChannel(String windowId, String channelName) {
-        return windowMap.get(windowId + "|" + channelName);
-    }
-
     public int countWindows() {
         return windowMap.size();
     }
 
-    public void insertWindow(SimWindow w) {
-        windowMap.put(w.getWindowId() + "|" + w.getChannelName(), w);
-    }
-
-    public void updateWindow(SimWindow w) {
-        windowMap.replace(w.getWindowId() + "|" + w.getChannelName(), w);
-    }
-
-    public boolean deleteWindow(String windowId) {
-        boolean removed = false;
-        Iterator<Map.Entry<String, SimWindow>> it = windowMap.entrySet().iterator();
-        while (it.hasNext()) {
-            if (it.next().getValue().getWindowId().equals(windowId)) {
-                it.remove();
-                removed = true;
+    /**
+     * 用完整快照整体替换本地窗口列表（key 为 windowId）。
+     */
+    public void replaceAllWindows(List<SimWindow> windows) {
+        windowMap.clear();
+        for (SimWindow w : windows) {
+            if (w != null && w.getWindowId() != null) {
+                windowMap.put(w.getWindowId(), w);
             }
         }
-        return removed;
     }
 
     private final ConcurrentHashMap<String, String> channelUrlMap = new ConcurrentHashMap<>();

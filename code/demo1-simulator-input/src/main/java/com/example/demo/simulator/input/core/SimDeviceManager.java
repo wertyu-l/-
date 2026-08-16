@@ -10,6 +10,14 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+/**
+ * 输入设备核心管理器
+ * <p>
+ * 管理设备信息、能力、窗口的内存缓存，并与 H2 数据库同步。
+ * 输入设备作为被动信号源，仅接收管控系统推送的完整窗口快照并整体替换本地列表，
+ * 不提供窗口的增删改查；窗口列表仅用于前端展示。
+ * 输入设备不涉及 supportMove/supportResize/supportOverlay 能力。
+ */
 @Component
 public class SimDeviceManager {
 
@@ -18,20 +26,34 @@ public class SimDeviceManager {
     private final DeviceRepository repo;
     private final LocalDateTime startTime = LocalDateTime.now();
 
+    /**
+     * 构造时从数据库加载设备信息和能力到内存
+     */
     public SimDeviceManager(DeviceRepository repo) {
         this.repo = repo;
         this.deviceInfo = repo.loadDeviceInfo();
         this.deviceCapability = repo.loadDeviceCapability();
     }
 
+    /**
+     * 获取设备基本信息（内存缓存）
+     */
     public SimDeviceInfo getDeviceInfo() {
         return deviceInfo;
     }
 
+    /**
+     * 从数据库重新加载设备信息
+     */
     public SimDeviceInfo getDeviceInfoFromDb() {
         return repo.loadDeviceInfo();
     }
 
+    /**
+     * 获取设备运行状态
+     * <p>
+     * 返回在线状态、当前窗口数量、设备启动时间。
+     */
     public SimDeviceStatus getDeviceStatus() {
         SimDeviceStatus status = new SimDeviceStatus();
         status.setOnline(true);
@@ -40,18 +62,29 @@ public class SimDeviceManager {
         return status;
     }
 
+    /**
+     * 获取设备能力（内存缓存）
+     */
     public SimDeviceCapability getDeviceCapability() {
         return deviceCapability;
     }
 
+    /**
+     * 从数据库重新加载设备能力
+     */
     public SimDeviceCapability getDeviceCapabilityFromDb() {
         return repo.loadDeviceCapability();
     }
 
+    /**
+     * 更新设备能力（运行时动态变更）
+     * <p>
+     * 更新内存缓存和数据库，同时同步 deviceInfo 中的通道信息。
+     *
+     * @param newCapability 新的能力配置
+     * @return 更新后的能力对象
+     */
     public SimDeviceCapability updateDeviceCapability(SimDeviceCapability newCapability) {
-        deviceCapability.setSupportMove(newCapability.isSupportMove());
-        deviceCapability.setSupportResize(newCapability.isSupportResize());
-        deviceCapability.setSupportOverlay(newCapability.isSupportOverlay());
         deviceCapability.setMaxResolution(newCapability.getMaxResolution());
         deviceCapability.setChannelCount(newCapability.getChannelCount());
         deviceCapability.setInputChannel1(newCapability.getInputChannel1());
@@ -71,6 +104,12 @@ public class SimDeviceManager {
         return deviceCapability;
     }
 
+    /**
+     * 校验输入通道名是否有效
+     *
+     * @param channelName 通道名称
+     * @return true 表示该通道已定义
+     */
     public boolean isValidInputChannel(String channelName) {
         if (channelName == null || channelName.isEmpty()) return false;
         return channelName.equals(deviceInfo.getInputChannel1())
@@ -80,29 +119,33 @@ public class SimDeviceManager {
                 || channelName.equals(deviceInfo.getInputChannel5());
     }
 
-    public SimWindow createWindow(SimWindow window) {
-        if (repo.findByWindowIdAndChannel(window.getWindowId(), window.getChannelName()) != null) {
-            return null;
+    /**
+     * 窗口快照反馈：用管控系统推送的完整窗口列表整体替换本地窗口列表。
+     * <p>
+     * 快照中缺失的窗口即视为已关闭；新增或位置/大小变化的窗口直接覆盖。
+     * 对每个窗口，若 sourceType/sourceUrl 为空，则根据通道配置推断/补全。
+     *
+     * @param windows 当前完整窗口列表（可为空列表表示全部关闭）
+     */
+    public void notifyWindows(List<SimWindow> windows) {
+        List<SimWindow> snapshot = windows != null ? windows : List.of();
+        for (SimWindow w : snapshot) {
+            if (w.getSourceUrl() == null || w.getSourceUrl().isEmpty()) {
+                String channelUrl = repo.getChannelUrl(w.getChannelName());
+                w.setSourceUrl(channelUrl != null ? channelUrl : "");
+            }
+            if (w.getSourceType() == null || w.getSourceType().isEmpty()) {
+                w.setSourceType(inferSourceType(w.getChannelName()));
+            }
         }
-        if (!isValidInputChannel(window.getChannelName())) {
-            return null;
-        }
-        if (window.getX() == null) window.setX(0);
-        if (window.getY() == null) window.setY(0);
-        if (window.getWidth() == null) window.setWidth(1920);
-        if (window.getHeight() == null) window.setHeight(1080);
-        if (window.getSourceUrl() == null || window.getSourceUrl().isEmpty()) {
-            String channelUrl = repo.getChannelUrl(window.getChannelName());
-            window.setSourceUrl(channelUrl != null ? channelUrl : "");
-        }
-        if (window.getSourceType() == null || window.getSourceType().isEmpty()) {
-            window.setSourceType(inferSourceType(window.getChannelName()));
-        }
-        window.setCreateTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-        repo.insertWindow(window);
-        return window;
+        repo.replaceAllWindows(snapshot);
     }
 
+    /**
+     * 根据通道名前缀推断信号源类型
+     * <p>
+     * HDMI → HDMI, VGA → VGA, DP → DP, SDI → SDI, 其他 → Stream
+     */
     private String inferSourceType(String channelName) {
         if (channelName == null) return "";
         String upper = channelName.toUpperCase();
@@ -113,47 +156,30 @@ public class SimDeviceManager {
         return "Stream";
     }
 
-    public SimWindow getWindow(String windowId) {
-        return repo.findWindowById(windowId);
-    }
-
+    /**
+     * 查询所有窗口
+     *
+     * @return 当前设备内存中的全部窗口列表（由 notify 快照维护）
+     */
     public List<SimWindow> getWindows() {
         return repo.findAllWindows();
     }
 
-    public boolean closeWindow(String windowId) {
-        return repo.deleteWindow(windowId);
-    }
-
-    public SimWindow updateWindow(String windowId, SimWindow update) {
-        SimWindow existing = repo.findWindowById(windowId);
-        if (existing == null) {
-            return null;
-        }
-        boolean moveRequested = update.getX() != null || update.getY() != null;
-        if (moveRequested) {
-            if (!deviceCapability.isSupportMove()) {
-                return null;
-            }
-            if (update.getX() != null) existing.setX(update.getX());
-            if (update.getY() != null) existing.setY(update.getY());
-        }
-        boolean resizeRequested = update.getWidth() != null || update.getHeight() != null;
-        if (resizeRequested) {
-            if (!deviceCapability.isSupportResize()) {
-                return null;
-            }
-            if (update.getWidth() != null) existing.setWidth(update.getWidth());
-            if (update.getHeight() != null) existing.setHeight(update.getHeight());
-        }
-        repo.updateWindow(existing);
-        return existing;
-    }
-
+    /**
+     * 设置通道播放地址
+     *
+     * @param channelName 输入通道名称
+     * @param sourceUrl   播放地址（流媒体 URL）
+     */
     public void setChannelUrl(String channelName, String sourceUrl) {
         repo.setChannelUrl(channelName, sourceUrl);
     }
 
+    /**
+     * 获取所有通道的播放地址
+     *
+     * @return 通道名到播放地址的映射
+     */
     public java.util.Map<String, String> getChannelUrls() {
         return repo.getAllChannelUrls();
     }

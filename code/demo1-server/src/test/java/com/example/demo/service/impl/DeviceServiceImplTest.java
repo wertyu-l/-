@@ -449,7 +449,7 @@ class DeviceServiceImplTest {
     @Test
     void discover_shouldDelegateToDiscoveryService() {
         List<DiscoveredNode> nodes = new ArrayList<>();
-        nodes.add(new DiscoveredNode(BASE_URL, false));
+        nodes.add(new DiscoveredNode(BASE_URL, "INPUT", false));
         when(discoveryService.discover()).thenReturn(nodes);
 
         List<DiscoveredNode> result = deviceService.discover();

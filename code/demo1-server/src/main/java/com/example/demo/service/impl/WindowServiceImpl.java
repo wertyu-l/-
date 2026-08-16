@@ -45,6 +45,16 @@ public class WindowServiceImpl implements WindowService {
     @Autowired
     private DeviceDriver deviceDriver;
 
+    /**
+     * 创建窗口
+     * <p>
+     * 校验窗口参数、设备能力（maxWindows、叠加）、写入 DB、
+     * 然后按单元拆分子窗口推送给各输出设备，完整窗口推送给输入设备。
+     *
+     * @param screenId 大屏 ID
+     * @param request  创建参数（窗口 ID、设备 ID、通道名、坐标、尺寸）
+     * @return 创建后的窗口 VO
+     */
     @Override
     @Transactional
     public ScreenWindowVO createWindow(Long screenId, WindowCreateRequest request) {
@@ -63,7 +73,7 @@ public class WindowServiceImpl implements WindowService {
             throw new RuntimeException("大屏不存在: id=" + screenId);
         }
 
-        // 校验窗口数限制：按每个设备单元的 maxWindows 独立限制
+        // 校验窗口数限制：按输出通道的窗口数限制（每个输出通道最多 maxWindows 个窗口）
         List<CellVO> cells = screenMapper.findCellsByScreenId(screenId);
         List<ScreenWindowVO> existingWindows = windowMapper.findByScreenId(screenId);
 
@@ -75,31 +85,7 @@ public class WindowServiceImpl implements WindowService {
         int ww = request.getWidth() != null ? request.getWidth() : 960;
         int wh = request.getHeight() != null ? request.getHeight() : 540;
 
-        for (CellVO cell : cells) {
-            if (cell.getDeviceId() == null || cell.getMaxWindows() == null) continue;
-
-            if (!windowCoversCell(wx, wy, ww, wh,
-                    cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
-                continue;
-            }
-
-            int countOnCell = 0;
-            for (ScreenWindowVO existing : existingWindows) {
-                int ex = existing.getX() != null ? existing.getX() : 0;
-                int ey = existing.getY() != null ? existing.getY() : 0;
-                int ew = existing.getWidth() != null ? existing.getWidth() : 960;
-                int eh = existing.getHeight() != null ? existing.getHeight() : 540;
-                if (windowCoversCell(ex, ey, ew, eh,
-                        cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
-                    countOnCell++;
-                }
-            }
-
-            if (countOnCell >= cell.getMaxWindows()) {
-                throw new RuntimeException("设备 [" + cell.getDeviceName()
-                        + "] 窗口数已达上限（" + cell.getMaxWindows() + "）");
-            }
-        }
+        validateMaxWindows(cells, existingWindows, null, wx, wy, ww, wh, cellW, cellH);
 
         // 写入 DB（先标记 pending）
         ScreenWindow sw = new ScreenWindow();
@@ -127,6 +113,19 @@ public class WindowServiceImpl implements WindowService {
         return toVO(windowMapper.findByWindowId(request.getWindowId()), device);
     }
 
+    /**
+     * 更新窗口位置/大小
+     * <p>
+     * 校验设备能力（移动→supportMove、缩放→supportResize）、
+     * 窗口数限制（maxWindows per cell），更新 DB 后
+     * Phase 1 关闭旧单元的旧子窗口，Phase 2 在新单元创建子窗口，
+     * Phase 3 推送完整窗口到输入设备。
+     *
+     * @param screenId 大屏 ID
+     * @param windowId 窗口唯一标识
+     * @param request  更新参数（x、y、width、height）
+     * @return 更新后的窗口 VO
+     */
     @Override
     @Transactional
     public ScreenWindowVO updateWindow(Long screenId, String windowId, WindowUpdateRequest request) {
@@ -143,44 +142,10 @@ public class WindowServiceImpl implements WindowService {
         Integer newW = request.getWidth() != null ? request.getWidth() : sw.getWidth();
         Integer newH = request.getHeight() != null ? request.getHeight() : sw.getHeight();
 
-        // 校验设备能力限制（移动、缩放、叠加），先构造临时对象
+        // 校验设备能力限制（移动、缩放、叠加）
         boolean moveRequested = request.getX() != null || request.getY() != null;
         boolean resizeRequested = request.getWidth() != null || request.getHeight() != null;
         if (moveRequested || resizeRequested) {
-            // 校验窗口数限制：移动/缩放后，新位置覆盖的每个单元不能超过 maxWindows
-            List<CellVO> cells = screenMapper.findCellsByScreenId(screenId);
-            List<ScreenWindowVO> existingWindows = windowMapper.findByScreenId(screenId);
-            int cellW = screen.getCellWidth();
-            int cellH = screen.getCellHeight();
-
-            for (CellVO cell : cells) {
-                if (cell.getDeviceId() == null || cell.getMaxWindows() == null) continue;
-
-                if (!windowCoversCell(newX, newY, newW, newH,
-                        cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
-                    continue;
-                }
-
-                int countOnCell = 0;
-                for (ScreenWindowVO existing : existingWindows) {
-                    if (existing.getWindowId().equals(windowId)) continue;
-
-                    int ex = existing.getX() != null ? existing.getX() : 0;
-                    int ey = existing.getY() != null ? existing.getY() : 0;
-                    int ew = existing.getWidth() != null ? existing.getWidth() : 960;
-                    int eh = existing.getHeight() != null ? existing.getHeight() : 540;
-                    if (windowCoversCell(ex, ey, ew, eh,
-                            cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
-                        countOnCell++;
-                    }
-                }
-
-                if (countOnCell >= cell.getMaxWindows()) {
-                    throw new RuntimeException("设备 [" + cell.getDeviceName()
-                            + "] 窗口数已达上限（" + cell.getMaxWindows() + "）");
-                }
-            }
-
             ScreenWindow tempSw = new ScreenWindow();
             tempSw.setWindowId(windowId);
             tempSw.setDeviceId(sw.getDeviceId());
@@ -188,7 +153,22 @@ public class WindowServiceImpl implements WindowService {
             tempSw.setY(newY);
             tempSw.setWidth(newW);
             tempSw.setHeight(newH);
-            validateUpdateCapabilities(tempSw, screen, moveRequested, resizeRequested);
+
+            // 移动/缩放跨到不支持对应能力的输出通道时，直接回退到原位置/尺寸（不报错）
+            if (!isMoveResizeSupported(tempSw, screen, moveRequested, resizeRequested)) {
+                DevicePageVO device = deviceMapper.findById(sw.getDeviceId());
+                return toVO(windowMapper.findByWindowId(windowId), device);
+            }
+
+            // 校验窗口数限制：移动/缩放后，按输出通道的窗口数限制
+            List<CellVO> cells = screenMapper.findCellsByScreenId(screenId);
+            List<ScreenWindowVO> existingWindows = windowMapper.findByScreenId(screenId);
+            int cellW = screen.getCellWidth();
+            int cellH = screen.getCellHeight();
+
+            validateMaxWindows(cells, existingWindows, windowId, newX, newY, newW, newH, cellW, cellH);
+
+            validateUpdateCapabilities(tempSw, screen);
         }
 
         // 保存旧位置覆盖的单元列表，更新后再精准清理旧子窗口
@@ -209,6 +189,15 @@ public class WindowServiceImpl implements WindowService {
         return toVO(windowMapper.findByWindowId(windowId), device);
     }
 
+    /**
+     * 关闭窗口
+     * <p>
+     * 先标记 closing 防止定时任务干扰，然后关闭所有输出设备上的子窗口，
+     * 再关闭输入设备上的信号源窗口，最后删除 DB 记录。
+     *
+     * @param screenId 大屏 ID
+     * @param windowId 窗口唯一标识
+     */
     @Override
     @Transactional
     public void closeWindow(Long screenId, String windowId) {
@@ -239,11 +228,11 @@ public class WindowServiceImpl implements WindowService {
             }
         }
 
-        // 关闭输入设备（信号源）上的窗口
+        // 推送输入设备（信号源）的剩余窗口快照（不含被关闭窗口，缺失即视为关闭）
         DevicePageVO sourceDev = deviceMapper.findById(sw.getDeviceId());
         if (sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1) {
             try {
-                deviceDriver.closeWindow(buildEndpoint(sourceDev), windowId);
+                deviceDriver.notifyWindow(buildEndpoint(sourceDev), buildWindowSnapshot(sw.getDeviceId(), windowId));
             } catch (Exception e) {
                 allClosed = false;
             }
@@ -252,11 +241,24 @@ public class WindowServiceImpl implements WindowService {
         windowMapper.deleteByWindowId(windowId);
     }
 
+    /**
+     * 查询大屏下所有窗口
+     *
+     * @param screenId 大屏 ID
+     * @return 窗口列表
+     */
     @Override
     public List<ScreenWindowVO> getWindows(Long screenId) {
         return windowMapper.findByScreenId(screenId);
     }
 
+    /**
+     * 清空大屏所有窗口
+     * <p>
+     * 遍历大屏下所有窗口逐一关闭，单个关闭失败忽略继续。
+     *
+     * @param screenId 大屏 ID
+     */
     @Override
     @Transactional
     public void clearWindows(Long screenId) {
@@ -269,6 +271,15 @@ public class WindowServiceImpl implements WindowService {
         }
     }
 
+    /**
+     * 查询大屏按输出设备分组的子窗口视图
+     * <p>
+     * 遍历大屏所有单元，计算每个窗口在该单元上的子窗口坐标，
+     * 返回按单元（输出设备）分组的子窗口列表，供前端展示。
+     *
+     * @param screenId 大屏 ID
+     * @return 按输出设备分组的子窗口列表
+     */
     @Override
     public List<OutputDeviceWindowsVO> getOutputDeviceWindows(Long screenId) {
         Screen screen = screenMapper.findById(screenId);
@@ -397,19 +408,14 @@ public class WindowServiceImpl implements WindowService {
     }
 
     /**
-     * 校验更新窗口时的设备能力限制（移动、缩放、叠加）
+     * 判断窗口移动/缩放是否被其新位置覆盖的输出通道支持。
      * <p>
-     * 遍历窗口覆盖的所有单元，根据请求中变更的维度逐一检查对应能力：
-     * <ul>
-     *   <li>移动（x/y 变化）→ 检查 supportMove</li>
-     *   <li>缩放（width/height 变化）→ 检查 supportResize</li>
-     *   <li>矩形变化 → 重新检查叠加，避免新的重叠出现在不支持叠加的设备上</li>
-     * </ul>
+     * 遍历新位置覆盖的所有单元：纯移动（moveRequested 且非缩放）需对应通道 supportMove=1；
+     * 缩放需 supportResize=1。任一目标通道不支持则返回 false，由调用方回退到原位置/尺寸。
      */
-    private void validateUpdateCapabilities(ScreenWindow sw, Screen screen,
-                                            boolean moveRequested, boolean resizeRequested) {
+    private boolean isMoveResizeSupported(ScreenWindow sw, Screen screen,
+                                          boolean moveRequested, boolean resizeRequested) {
         List<CellVO> cells = screenMapper.findCellsByScreenId(screen.getId());
-        List<ScreenWindowVO> existingWindows = windowMapper.findByScreenId(screen.getId());
 
         int cellW = screen.getCellWidth();
         int cellH = screen.getCellHeight();
@@ -425,19 +431,37 @@ public class WindowServiceImpl implements WindowService {
                 continue;
             }
 
-            // 检查移动能力（纯移动才检查，缩放附带的位置变化不在此列）
+            // 纯移动才检查 supportMove（缩放附带的位置变化不在此列）
             if (moveRequested && !resizeRequested
                     && cell.getSupportMove() != null && cell.getSupportMove() == 0) {
-                throw new RuntimeException("设备 [" + cell.getDeviceName() + "] 不支持窗口移动");
+                return false;
             }
-
-            // 检查缩放能力
+            // 缩放检查 supportResize
             if (resizeRequested && cell.getSupportResize() != null && cell.getSupportResize() == 0) {
-                throw new RuntimeException("设备 [" + cell.getDeviceName() + "] 不支持窗口缩放");
+                return false;
             }
         }
+        return true;
+    }
 
-        // 检查叠加能力（矩形变化后可能产生新的重叠）
+    /**
+     * 校验更新窗口时的叠加能力限制。
+     * <p>
+     * 移动/缩放能力已由 {@link #isMoveResizeSupported} 提前校验（不支持时回退），
+     * 此处仅校验矩形变化后是否在不支持叠加（supportOverlay=0）的设备上产生新的重叠。
+     */
+    private void validateUpdateCapabilities(ScreenWindow sw, Screen screen) {
+        List<CellVO> cells = screenMapper.findCellsByScreenId(screen.getId());
+        List<ScreenWindowVO> existingWindows = windowMapper.findByScreenId(screen.getId());
+
+        int cellW = screen.getCellWidth();
+        int cellH = screen.getCellHeight();
+
+        int wx = sw.getX() != null ? sw.getX() : 0;
+        int wy = sw.getY() != null ? sw.getY() : 0;
+        int ww = sw.getWidth() != null ? sw.getWidth() : 960;
+        int wh = sw.getHeight() != null ? sw.getHeight() : 540;
+
         for (CellVO cell : cells) {
             if (cell.getDeviceId() == null) continue;
             if (cell.getSupportOverlay() != null && cell.getSupportOverlay() == 1) continue;
@@ -480,6 +504,84 @@ public class WindowServiceImpl implements WindowService {
 
         return winLeft < cellRight && winRight > cellLeft
                 && winTop < cellBottom && winBottom > cellTop;
+    }
+
+    /**
+     * 校验窗口数限制：按输出通道的子窗口数限制（每个输出通道最多 maxWindows 个子窗口）。
+     * <p>
+     * maxWindows 是「单通道」上限，而非整个设备的窗口总数；一个输出通道可创建的子窗口数
+     * 不超过 maxWindows。因此按 (deviceId, channelName) 逐个通道校验，与设备端按通道计数
+     * 的口径保持一致，避免设备端按通道计数时因口径不一致而拒绝推送、导致窗口被标记降级（离线）。
+     *
+     * @param cells            大屏单元列表
+     * @param existingWindows  已有窗口
+     * @param ignoreWindowId   校验更新时需排除的窗口 ID，创建时为 null
+     * @param wx, wy, ww, wh   待校验窗口矩形
+     */
+    private void validateMaxWindows(List<CellVO> cells, List<ScreenWindowVO> existingWindows,
+                                    String ignoreWindowId,
+                                    int wx, int wy, int ww, int wh, int cellW, int cellH) {
+        java.util.Map<String, Integer> channelMax = new java.util.LinkedHashMap<>();
+        java.util.Map<String, String> channelDesc = new java.util.LinkedHashMap<>();
+        for (CellVO cell : cells) {
+            if (cell.getDeviceId() == null || cell.getChannelName() == null || cell.getMaxWindows() == null) continue;
+            String key = cell.getDeviceId() + "|" + cell.getChannelName();
+            channelMax.putIfAbsent(key, cell.getMaxWindows());
+            channelDesc.putIfAbsent(key, cell.getDeviceName() + "/" + cell.getChannelName());
+        }
+
+        for (java.util.Map.Entry<String, Integer> entry : channelMax.entrySet()) {
+            String key = entry.getKey();
+            int maxWindows = entry.getValue();
+
+            if (!coversChannel(cells, key, wx, wy, ww, wh, cellW, cellH)) continue;
+
+            int count = 0;
+            for (ScreenWindowVO existing : existingWindows) {
+                if (ignoreWindowId != null && ignoreWindowId.equals(existing.getWindowId())) continue;
+                if (coversChannel(cells, key,
+                        existing.getX() != null ? existing.getX() : 0,
+                        existing.getY() != null ? existing.getY() : 0,
+                        existing.getWidth() != null ? existing.getWidth() : 960,
+                        existing.getHeight() != null ? existing.getHeight() : 540,
+                        cellW, cellH)) {
+                    count++;
+                }
+            }
+
+            if (count + 1 > maxWindows) {
+                throw new RuntimeException("通道 [" + channelDesc.get(key)
+                        + "] 窗口数已达上限（" + maxWindows + "）");
+            }
+        }
+    }
+
+    /**
+     * 判断窗口是否覆盖指定输出通道（该通道下任一单元被覆盖即视为覆盖，计 1 个子窗口）。
+     */
+    private boolean coversChannel(List<CellVO> cells, String channelKey,
+                                  int wx, int wy, int ww, int wh, int cellW, int cellH) {
+        for (CellVO cell : cells) {
+            if (cell.getDeviceId() == null || cell.getChannelName() == null) continue;
+            if (!channelKey.equals(cell.getDeviceId() + "|" + cell.getChannelName())) continue;
+            if (windowCoversCell(wx, wy, ww, wh, cell.getRowIndex(), cell.getColIndex(), cellW, cellH)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 根据输入通道名前缀推断信号源类型。
+     */
+    private String inferSourceType(String channelName) {
+        if (channelName == null) return "";
+        String upper = channelName.toUpperCase();
+        if (upper.startsWith("HDMI")) return "HDMI";
+        if (upper.startsWith("VGA")) return "VGA";
+        if (upper.startsWith("DP")) return "DP";
+        if (upper.startsWith("SDI")) return "SDI";
+        return "Stream";
     }
 
     // ==================== 跨单元拆分与降级 ====================
@@ -527,14 +629,13 @@ public class WindowServiceImpl implements WindowService {
     }
 
     /**
-     * 将窗口按覆盖单元拆分并同步到各设备
-     *
-     * @param sw        窗口
-     * @param screen    大屏
-     * @param isUpdate  是否更新（true=先关闭旧子窗口再创建新的）
-     */
-    /**
      * 将窗口按覆盖单元拆分并同步到各设备。
+     * <p>
+     * Phase 1（更新时）：关闭旧单元覆盖设备上的旧子窗口和信号源设备上的旧窗口。
+     * Phase 2：为每个覆盖单元创建子窗口（跳过离线设备）。
+     * Phase 3：推送完整窗口到输入设备（信号源）。
+     * <p>
+     * 任一设备离线则标记 degraded=1，由定时重试在设备恢复后补推。
      *
      * @param sw            窗口（含最新位置/大小）
      * @param screen        大屏
@@ -559,11 +660,6 @@ public class WindowServiceImpl implements WindowService {
                     try { deviceDriver.closeWindow(buildEndpoint(dev), sw.getWindowId()); } catch (Exception ignored) {}
                 }
             }
-            // 同时关闭信号源设备上的旧窗口（仅在线时）
-            DevicePageVO sourceDev = deviceMapper.findById(sw.getDeviceId());
-            if (sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1) {
-                try { deviceDriver.closeWindow(buildEndpoint(sourceDev), sw.getWindowId()); } catch (Exception ignored) {}
-            }
         }
 
         // Phase 2: 为每个覆盖单元创建子窗口（跳过离线设备）
@@ -587,6 +683,7 @@ public class WindowServiceImpl implements WindowService {
                 simWindow.setY(cov.y);
                 simWindow.setWidth(cov.w);
                 simWindow.setHeight(cov.h);
+                simWindow.setSourceType(inferSourceType(sw.getChannelName()));
                 simWindow.setSourceUrl(sw.getSourceUrl());
 
                 Result<SimWindow> result = deviceDriver.createWindow(endpoint, simWindow);
@@ -598,7 +695,7 @@ public class WindowServiceImpl implements WindowService {
             }
         }
 
-        // Phase 3: 推送完整窗口到输入设备（信号源）
+        // Phase 3: 推送完整窗口快照到输入设备（信号源）
         // 计算实际同步目标数——仅统计在线设备，离线设备不计入 totalTargets
         int onlineOutputDevices = 0;
         for (CellCoverage cov : newCoverages) {
@@ -614,16 +711,8 @@ public class WindowServiceImpl implements WindowService {
         if (sourceDev != null) {
             if (sourceOnline) {
                 try {
-                    DeviceEndpoint endpoint = buildEndpoint(sourceDev);
-                    SimWindow simWindow = new SimWindow();
-                    simWindow.setWindowId(sw.getWindowId());
-                    simWindow.setChannelName(sw.getChannelName());
-                    simWindow.setX(sw.getX());
-                    simWindow.setY(sw.getY());
-                    simWindow.setWidth(sw.getWidth());
-                    simWindow.setHeight(sw.getHeight());
-                    simWindow.setSourceUrl(sw.getSourceUrl());
-                    Result<SimWindow> result = deviceDriver.createWindow(endpoint, simWindow);
+                    Result<Void> result = deviceDriver.notifyWindow(
+                            buildEndpoint(sourceDev), buildWindowSnapshot(sw.getDeviceId(), null));
                     if (result != null && result.getCode() == 1) {
                         successCount++;
                     }
@@ -671,7 +760,10 @@ public class WindowServiceImpl implements WindowService {
     // ==================== 设备恢复后窗口重同步 ====================
 
     /**
-     * 设备恢复上线后，将其相关窗口标记为 pending，由定时重试自动补推
+     * 设备恢复上线后，将其相关窗口标记为 pending，由定时重试自动补推。
+     * <p>
+     * 输入设备：标记其信号源窗口为 pending；
+     * 输出设备：标记该设备所在大屏的所有窗口为 pending。
      */
     @Override
     public void markPendingForDevice(DevicePageVO device) {
@@ -688,7 +780,10 @@ public class WindowServiceImpl implements WindowService {
     }
 
     /**
-     * 设备离线后，将其相关窗口标记为 failed + 降级
+     * 设备离线后，将其相关窗口标记为 failed + 降级。
+     * <p>
+     * 输入设备：标记其信号源窗口为 failed + degraded=1；
+     * 输出设备：仅标记覆盖了该设备单元的那些窗口，不影响同大屏其他窗口。
      */
     @Override
     public void markFailedForDevice(DevicePageVO device) {
@@ -774,6 +869,33 @@ public class WindowServiceImpl implements WindowService {
         endpoint.setDeviceType(device.getDeviceType());
         endpoint.setBaseUrl(device.getBaseUrl());
         return endpoint;
+    }
+
+    /**
+     * 构建输入设备的完整窗口快照。
+     * <p>
+     * 查询该输入设备（deviceId）在管控系统中记录的所有窗口并转换为 SimWindow 列表；
+     * excludeWindowId 用于关闭场景排除待删窗口（此时 DB 尚未删除）。
+     */
+    private List<SimWindow> buildWindowSnapshot(Long deviceId, String excludeWindowId) {
+        List<ScreenWindow> windows = windowMapper.findByDeviceId(deviceId);
+        List<SimWindow> snapshot = new ArrayList<>();
+        for (ScreenWindow w : windows) {
+            if (excludeWindowId != null && excludeWindowId.equals(w.getWindowId())) continue;
+            SimWindow simWindow = new SimWindow();
+            simWindow.setWindowId(w.getWindowId());
+            simWindow.setChannelName(w.getChannelName());
+            simWindow.setX(w.getX());
+            simWindow.setY(w.getY());
+            simWindow.setWidth(w.getWidth());
+            simWindow.setHeight(w.getHeight());
+            simWindow.setSourceUrl(w.getSourceUrl());
+            if (w.getCreateTime() != null) {
+                simWindow.setCreateTime(w.getCreateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            }
+            snapshot.add(simWindow);
+        }
+        return snapshot;
     }
 
     /**

@@ -47,6 +47,7 @@ public class DiscoveryListener {
 
                             Map<String, String> response = new HashMap<>();
                             response.put("baseUrl", baseUrl);
+                            response.put("deviceType", "INPUT");
 
                             byte[] responseData = objectMapper.writeValueAsBytes(response);
                             DatagramPacket responsePacket = new DatagramPacket(

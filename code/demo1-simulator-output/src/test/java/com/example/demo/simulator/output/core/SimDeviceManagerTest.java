@@ -18,8 +18,8 @@ import static org.mockito.Mockito.*;
 /**
  * SimDeviceManager（输出模拟器）单元测试
  * <p>
- * 覆盖输出模拟设备的窗口创建、更新、删除、状态查询、设备信息/能力查询的完整流程，
- * 重点验证输出通道校验（OUT-1~OUT-5）、能力开关（移动/缩放）、能力更新联动设备信息。
+ * 覆盖输出模拟设备的窗口创建、删除、状态查询、设备信息/能力查询的完整流程，
+ * 重点验证输出通道校验（OUT-1~OUT-5）、能力声明（移动/缩放/叠加）、能力更新联动设备信息。
  */
 @ExtendWith(MockitoExtension.class)
 class SimDeviceManagerTest {
@@ -119,19 +119,6 @@ class SimDeviceManagerTest {
         assertEquals(1080, result.getHeight());
     }
 
-    /**
-     * 创建窗口时应从通道获取信号源 URL
-     */
-    @Test
-    void createWindow_sourceUrlFromChannel_shouldUseChannelUrl() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("OUT-1");
-        when(repo.findByWindowIdAndChannel("win-001", "OUT-1")).thenReturn(null);
-        when(repo.getChannelUrl("OUT-1")).thenReturn("rtsp://source/stream");
-        SimWindow result = manager.createWindow(window);
-        assertEquals("rtsp://source/stream", result.getSourceUrl());
-    }
 
     /**
      * 输出设备的 sourceType 默认为空字符串（非 HDMI 不推断）
@@ -144,98 +131,6 @@ class SimDeviceManagerTest {
         when(repo.findByWindowIdAndChannel("win-001", "OUT-1")).thenReturn(null);
         SimWindow result = manager.createWindow(window);
         assertEquals("", result.getSourceType());
-    }
-
-    // ========== 窗口更新 ==========
-
-    /**
-     * 更新不存在的窗口应返回 null
-     */
-    @Test
-    void updateWindow_notFound_shouldReturnNull() {
-        when(repo.findWindowById("win-999")).thenReturn(null);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        assertNull(manager.updateWindow("win-999", update));
-    }
-
-    /**
-     * 设备不支持移动时，移动操作应返回 null
-     */
-    @Test
-    void updateWindow_moveNotSupported_shouldReturnNull() {
-        SimDeviceCapability cap = manager.getDeviceCapability();
-        cap.setSupportMove(false);
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("OUT-1");
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        assertNull(manager.updateWindow("win-001", update));
-    }
-
-    /**
-     * 设备不支持缩放时，缩放操作应返回 null
-     */
-    @Test
-    void updateWindow_resizeNotSupported_shouldReturnNull() {
-        SimDeviceCapability cap = manager.getDeviceCapability();
-        cap.setSupportResize(false);
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("OUT-1");
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setWidth(800);
-        assertNull(manager.updateWindow("win-001", update));
-    }
-
-    /**
-     * 正常更新窗口应成功修改坐标和尺寸
-     */
-    @Test
-    void updateWindow_success_shouldUpdate() {
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("OUT-1");
-        existing.setX(0);
-        existing.setY(0);
-        existing.setWidth(1920);
-        existing.setHeight(1080);
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        update.setY(200);
-        update.setWidth(1280);
-        update.setHeight(720);
-        SimWindow result = manager.updateWindow("win-001", update);
-        assertNotNull(result);
-        assertEquals(100, result.getX());
-        assertEquals(200, result.getY());
-        assertEquals(1280, result.getWidth());
-        assertEquals(720, result.getHeight());
-        verify(repo).updateWindow(existing);
-    }
-
-    /**
-     * 仅移动不缩放时，原尺寸应保持不变
-     */
-    @Test
-    void updateWindow_moveOnly_shouldNotResize() {
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("OUT-1");
-        existing.setX(0);
-        existing.setY(0);
-        existing.setWidth(1920);
-        existing.setHeight(1080);
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setX(50);
-        SimWindow result = manager.updateWindow("win-001", update);
-        assertEquals(50, result.getX());
-        assertEquals(1920, result.getWidth());
     }
 
     // ========== 窗口关闭/删除 ==========
@@ -360,26 +255,6 @@ class SimDeviceManagerTest {
         verify(repo).updateDeviceInfoFromCapability(newCap);
     }
 
-    // ========== 通道 URL 管理 ==========
-
-    /**
-     * 设置通道 URL 应委托给 Repository
-     */
-    @Test
-    void setChannelUrl_shouldDelegate() {
-        manager.setChannelUrl("OUT-1", "rtsp://source/stream");
-        verify(repo).setChannelUrl("OUT-1", "rtsp://source/stream");
-    }
-
-    /**
-     * 获取所有通道 URL 应委托给 Repository
-     */
-    @Test
-    void getChannelUrls_shouldDelegate() {
-        when(repo.getAllChannelUrls()).thenReturn(java.util.Map.of("OUT-1", "url1"));
-        assertEquals(1, manager.getChannelUrls().size());
-    }
-
     // ========== 窗口列表查询 ==========
 
     /**
@@ -400,5 +275,92 @@ class SimDeviceManagerTest {
         window.setWindowId("win-001");
         when(repo.findWindowById("win-001")).thenReturn(window);
         assertEquals(window, manager.getWindow("win-001"));
+    }
+
+    // ========== 窗口数上限 ==========
+
+    /**
+     * 窗口数已达上限时创建应返回 null
+     */
+    @Test
+    void createWindow_maxWindowsReached_shouldReturnNull() {
+        SimWindow window = new SimWindow();
+        window.setWindowId("win-005");
+        window.setChannelName("OUT-1");
+        when(repo.findByWindowIdAndChannel("win-005", "OUT-1")).thenReturn(null);
+        when(repo.countWindowsByChannel("OUT-1")).thenReturn(4); // maxWindows = 4
+        assertNull(manager.createWindow(window));
+    }
+
+    // ========== 窗口更新 ==========
+
+    /**
+     * 更新不存在的窗口应返回 null
+     */
+    @Test
+    void updateWindow_notFound_shouldReturnNull() {
+        when(repo.findWindowById("win-999")).thenReturn(null);
+        SimWindow update = new SimWindow();
+        update.setX(100);
+        assertNull(manager.updateWindow("win-999", update));
+    }
+
+    /**
+     * 正常更新窗口应成功修改坐标
+     */
+    @Test
+    void updateWindow_success_shouldUpdate() {
+        SimWindow existing = new SimWindow();
+        existing.setWindowId("win-001");
+        existing.setChannelName("OUT-1");
+        existing.setX(0);
+        existing.setY(0);
+        existing.setWidth(960);
+        existing.setHeight(540);
+        when(repo.findWindowById("win-001")).thenReturn(existing);
+        SimWindow update = new SimWindow();
+        update.setX(100);
+        update.setY(200);
+        SimWindow result = manager.updateWindow("win-001", update);
+        assertNotNull(result);
+        assertEquals(100, result.getX());
+        assertEquals(200, result.getY());
+        verify(repo).updateWindow(existing);
+    }
+
+    /**
+     * 设备不支持移动时，更新坐标应返回 null
+     */
+    @Test
+    void updateWindow_moveNotSupported_shouldReturnNull() {
+        SimWindow existing = new SimWindow();
+        existing.setWindowId("win-001");
+        existing.setChannelName("OUT-1");
+        existing.setX(0);
+        existing.setY(0);
+        when(repo.findWindowById("win-001")).thenReturn(existing);
+        manager.getDeviceCapability().setSupportMove(false);
+        SimWindow update = new SimWindow();
+        update.setX(100);
+        assertNull(manager.updateWindow("win-001", update));
+        verify(repo, never()).updateWindow(any());
+    }
+
+    /**
+     * 设备不支持缩放时，更新尺寸应返回 null
+     */
+    @Test
+    void updateWindow_resizeNotSupported_shouldReturnNull() {
+        SimWindow existing = new SimWindow();
+        existing.setWindowId("win-001");
+        existing.setChannelName("OUT-1");
+        existing.setWidth(960);
+        existing.setHeight(540);
+        when(repo.findWindowById("win-001")).thenReturn(existing);
+        manager.getDeviceCapability().setSupportResize(false);
+        SimWindow update = new SimWindow();
+        update.setWidth(1920);
+        assertNull(manager.updateWindow("win-001", update));
+        verify(repo, never()).updateWindow(any());
     }
 }

@@ -68,6 +68,11 @@
         ORDER BY sw.create_time DESC
     </select>
 
+    <select id="findByDeviceId" resultMap="WindowMap">
+        SELECT * FROM SCREEN_WINDOW WHERE device_id = #{deviceId}
+        ORDER BY create_time DESC
+    </select>
+
     <update id="updatePosition">
         UPDATE SCREEN_WINDOW
         SET x = #{x}, y = #{y}, width = #{width}, height = #{height},

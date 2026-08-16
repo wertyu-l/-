@@ -113,6 +113,16 @@ var ScreenInteract = {
       return;
     }
 
+    // 检查移动能力：若新位置覆盖的单元不支持移动，则回退
+    if (!this.checkCapability({x: actualX, y: actualY, width: actualW, height: actualH}, 'supportMove')) {
+      state.windowEl.style.left = state.origLeft + 'px';
+      state.windowEl.style.top = state.origTop + 'px';
+      showToast('目标设备不支持窗口移动，已回退', 'warning');
+      this.dragState = null;
+      this.interacting = false;
+      return;
+    }
+
     // 更新窗口数据
     var windowData = state.windowData;
     windowData.x = actualX;
@@ -177,6 +187,23 @@ var ScreenInteract = {
       return;
     }
 
+    // 检查缩放能力：若新尺寸覆盖的单元不支持缩放，则回退
+    if (!this.checkCapability({x: actualX, y: actualY, width: actualW, height: actualH}, 'supportResize')) {
+      state.windowEl.style.left = state.origLeft + 'px';
+      state.windowEl.style.top = state.origTop + 'px';
+      state.windowEl.style.width = state.origWidth + 'px';
+      state.windowEl.style.height = state.origHeight + 'px';
+      var content = state.windowEl.querySelector('.window-content');
+      if (content) {
+        content.style.width = (state.origWidth - 2) + 'px';
+        content.style.height = (state.origHeight - 24) + 'px';
+      }
+      showToast('目标设备不支持窗口缩放，已回退', 'warning');
+      this.resizeState = null;
+      this.interacting = false;
+      return;
+    }
+
     // 更新窗口数据
     var windowData = state.windowData;
     windowData.x = actualX;
@@ -217,12 +244,20 @@ var ScreenInteract = {
     var screenId = AppMode.currentScreenId;
     if (!screenId) return;
 
+    var reqX = windowData.x;
+    var reqY = windowData.y;
+
     WindowApi.update(screenId, windowData.windowId, {
-      x: windowData.x,
-      y: windowData.y,
+      x: reqX,
+      y: reqY,
     }).then(function (result) {
       if (result && result.data) {
         var updated = result.data;
+        // 服务端回退（移动跨到不支持移动的通道）：同步 DOM 与数据回原位置
+        if ((updated.x != null && updated.x !== reqX) || (updated.y != null && updated.y !== reqY)) {
+          ScreenInteract.applyServerRevert(windowData, updated, '目标设备不支持窗口移动，已回退');
+          return;
+        }
         ScreenPaint.updateWindow(windowData.windowId, {
           syncStatus: updated.syncStatus || 'synced',
           degraded: updated.degraded || 0,
@@ -238,15 +273,28 @@ var ScreenInteract = {
     var screenId = AppMode.currentScreenId;
     if (!screenId) return;
 
+    var reqX = windowData.x;
+    var reqY = windowData.y;
+    var reqW = windowData.width;
+    var reqH = windowData.height;
+
     WindowApi.update(screenId, windowData.windowId, {
-      x: windowData.x,
-      y: windowData.y,
-      width: windowData.width,
-      height: windowData.height,
+      x: reqX,
+      y: reqY,
+      width: reqW,
+      height: reqH,
     }).then(function (result) {
       // 更新同步状态
       if (result && result.data) {
         var updated = result.data;
+        // 服务端回退（缩放/移动跨到不支持对应能力的通道）：同步 DOM 与数据回原位置/尺寸
+        if ((updated.x != null && updated.x !== reqX) ||
+            (updated.y != null && updated.y !== reqY) ||
+            (updated.width != null && updated.width !== reqW) ||
+            (updated.height != null && updated.height !== reqH)) {
+          ScreenInteract.applyServerRevert(windowData, updated, '目标设备不支持该窗口操作，已回退');
+          return;
+        }
         ScreenPaint.updateWindow(windowData.windowId, {
           syncStatus: updated.syncStatus || 'synced',
           degraded: updated.degraded || 0,
@@ -255,6 +303,36 @@ var ScreenInteract = {
     }).catch(function (err) {
       showToast('保存窗口位置失败: 无法连接服务器，请检查网络', 'error');
     });
+  },
+
+  // ---------- 服务端回退：将窗口 DOM 与数据回退到服务端返回的位置/尺寸 ----------
+  applyServerRevert: function (windowData, updated, toastMsg) {
+    var el = ScreenPaint.canvasEl.querySelector('.canvas-window[data-window-id="' + windowData.windowId + '"]');
+    if (el) {
+      var px = ScreenPaint.toPixelX(updated.x != null ? updated.x : (windowData.x || 0));
+      var py = ScreenPaint.toPixelY(updated.y != null ? updated.y : (windowData.y || 0));
+      var pw = ScreenPaint.toPixelW(updated.width != null ? updated.width : (windowData.width || 960));
+      var ph = ScreenPaint.toPixelH(updated.height != null ? updated.height : (windowData.height || 540));
+      el.style.left = px + 'px';
+      el.style.top = py + 'px';
+      el.style.width = pw + 'px';
+      el.style.height = ph + 'px';
+      var content = el.querySelector('.window-content');
+      if (content) {
+        content.style.width = (pw - 2) + 'px';
+        content.style.height = (ph - 24) + 'px';
+      }
+      var contentInner = el.querySelector('.window-content-inner');
+      if (contentInner) {
+        contentInner.style.lineHeight = (ph - 24) + 'px';
+      }
+    }
+    // 更新窗口数据（同一引用，同步更新 ScreenPaint.windows）
+    windowData.x = updated.x != null ? updated.x : windowData.x;
+    windowData.y = updated.y != null ? updated.y : windowData.y;
+    windowData.width = updated.width != null ? updated.width : windowData.width;
+    windowData.height = updated.height != null ? updated.height : windowData.height;
+    showToast(toastMsg, 'warning');
   },
 
   // ---------- 边界约束 ----------
@@ -407,6 +485,35 @@ var ScreenInteract = {
     }
 
     return false;
+  },
+
+  // ---------- 检查目标单元是否支持指定能力（supportMove / supportResize） ----------
+  checkCapability: function (actualRect, capability) {
+    if (!ScreenPaint.currentScreen) return true;
+
+    var cellW = ScreenPaint.currentScreen.cellWidth || 1920;
+    var cellH = ScreenPaint.currentScreen.cellHeight || 1080;
+    var cols = ScreenPaint.currentScreen.colsCount;
+    var rows = ScreenPaint.currentScreen.rowsCount;
+
+    var wLeft = actualRect.x || 0;
+    var wTop = actualRect.y || 0;
+    var wRight = wLeft + (actualRect.width || 960);
+    var wBottom = wTop + (actualRect.height || 540);
+
+    var startCol = Math.max(0, Math.floor(wLeft / cellW));
+    var endCol = Math.min(cols - 1, Math.floor((wRight - 1) / cellW));
+    var startRow = Math.max(0, Math.floor(wTop / cellH));
+    var endRow = Math.min(rows - 1, Math.floor((wBottom - 1) / cellH));
+
+    for (var r = startRow; r <= endRow; r++) {
+      for (var c = startCol; c <= endCol; c++) {
+        var cell = ScreenPaint.getCellAt(r, c);
+        if (!cell || !cell.deviceId) continue;
+        if (cell[capability] === 0) return false;
+      }
+    }
+    return true;
   },
 
   // ---------- 设备能力检查 ----------

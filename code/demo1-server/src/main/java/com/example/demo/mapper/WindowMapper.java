@@ -22,6 +22,9 @@ public interface WindowMapper {
     /** 查询大屏下所有窗口（含设备名） */
     List<ScreenWindowVO> findByScreenId(@Param("screenId") Long screenId);
 
+    /** 按输入设备查询所有窗口（用于推送完整窗口快照） */
+    List<ScreenWindow> findByDeviceId(@Param("deviceId") Long deviceId);
+
     /** 更新窗口位置/大小 */
     int updatePosition(@Param("windowId") String windowId,
                        @Param("x") Integer x, @Param("y") Integer y,

@@ -5,7 +5,6 @@ SELECT '输入设备-1', 'REST', 'INPUT', 'DS-D2055NH-A', 'SN-INPUT-001',
         1, 'HDMI-1', '1920x1080'
 WHERE NOT EXISTS (SELECT 1 FROM DEVICE_INFO);
 
-INSERT INTO DEVICE_CAPABILITY (support_move, support_resize, support_overlay, max_resolution,
-                                channel_count, input_channel_1)
-SELECT TRUE, TRUE, TRUE, '1920x1080', 1, 'HDMI-1'
+INSERT INTO DEVICE_CAPABILITY (max_resolution, channel_count, input_channel_1)
+SELECT '1920x1080', 1, 'HDMI-1'
 WHERE NOT EXISTS (SELECT 1 FROM DEVICE_CAPABILITY);

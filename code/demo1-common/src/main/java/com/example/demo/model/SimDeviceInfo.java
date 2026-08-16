@@ -9,8 +9,8 @@ import lombok.Data;
  * baseUrl（含端口）即设备唯一标识，由管控系统的 DeviceEndpoint 管理。
  * <p>
  * 设备分为两类，由 deviceCategory 字段标识（INPUT/OUTPUT）：
- * - 输入设备（INPUT）：拥有输入通道，负责提供信号源。窗口相关操作仅对输入设备有意义。
- * - 输出设备（OUTPUT）：拥有输出通道，用于大屏绑定显示。输出设备不存在窗口概念。
+ * - 输入设备（INPUT）：拥有输入通道，作为被动信号源，仅接收管控系统推送的窗口快照，不做窗口增删改查。
+ * - 输出设备（OUTPUT）：拥有输出通道，用于大屏绑定显示，窗口绑定到输出通道，拥有窗口的完整增删改查。
  */
 @Data
 public class SimDeviceInfo {

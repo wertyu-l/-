@@ -41,4 +41,7 @@ public interface DeviceDriver {
     /** 查询设备所有窗口 */
     List<SimWindow> getWindows(DeviceEndpoint endpoint);
 
+    /** 推送输入设备的完整窗口快照（输入设备用该快照整体替换本地窗口列表） */
+    Result<Void> notifyWindow(DeviceEndpoint endpoint, List<SimWindow> windows);
+
 }

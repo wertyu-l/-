@@ -109,6 +109,16 @@ public class DeviceRepository {
         return windowMap.size();
     }
 
+    public int countWindowsByChannel(String channelName) {
+        int count = 0;
+        for (SimWindow w : windowMap.values()) {
+            if (channelName.equals(w.getChannelName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     public void insertWindow(SimWindow w) {
         windowMap.put(w.getWindowId() + "|" + w.getChannelName(), w);
     }
@@ -129,17 +139,4 @@ public class DeviceRepository {
         return removed;
     }
 
-    private final ConcurrentHashMap<String, String> channelUrlMap = new ConcurrentHashMap<>();
-
-    public void setChannelUrl(String channelName, String sourceUrl) {
-        channelUrlMap.put(channelName, sourceUrl);
-    }
-
-    public String getChannelUrl(String channelName) {
-        return channelUrlMap.getOrDefault(channelName, "");
-    }
-
-    public Map<String, String> getAllChannelUrls() {
-        return new java.util.LinkedHashMap<>(channelUrlMap);
-    }
 }

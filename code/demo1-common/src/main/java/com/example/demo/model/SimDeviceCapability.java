@@ -8,7 +8,8 @@ import lombok.Data;
  * 描述设备的功能限制，控制窗口创建时的校验规则。
  * 能力可以在运行时动态变更，用于模拟设备能力变化场景。
  * <p>
- * maxWindows 仅对输入设备有意义（输入设备有窗口操作），输出设备忽略此字段。
+ * supportMove/supportResize/supportOverlay/maxWindows 仅对输出设备有意义，
+ * 管控系统据此做布局校验，设备端不执行移动/缩放/叠加逻辑。
  */
 @Data
 public class SimDeviceCapability {

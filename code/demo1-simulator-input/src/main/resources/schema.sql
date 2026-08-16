@@ -17,9 +17,6 @@ CREATE TABLE IF NOT EXISTS DEVICE_INFO (
 
 CREATE TABLE IF NOT EXISTS DEVICE_CAPABILITY (
     id               BIGINT AUTO_INCREMENT PRIMARY KEY,
-    support_move     BOOLEAN       DEFAULT TRUE,
-    support_resize   BOOLEAN       DEFAULT TRUE,
-    support_overlay  BOOLEAN       DEFAULT TRUE,
     max_resolution   VARCHAR(50)   DEFAULT '1920x1080',
     channel_count    INT           DEFAULT 1,
     input_channel_1  VARCHAR(100)  DEFAULT '',

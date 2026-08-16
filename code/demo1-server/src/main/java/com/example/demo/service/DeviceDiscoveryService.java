@@ -101,6 +101,7 @@ public class DeviceDiscoveryService {
                     Map<String, String> responseMap = objectMapper.readValue(responseJson, Map.class);
 
                     String baseUrl = responseMap.get("baseUrl");
+                    String deviceType = responseMap.get("deviceType");
                     if (baseUrl != null && !baseUrl.isEmpty()) {
                         // 检查是否已添加到数据库
                         boolean added = deviceMapper.findByBaseUrl(baseUrl) != null;
@@ -109,7 +110,7 @@ public class DeviceDiscoveryService {
                         boolean alreadyInResult = result.stream()
                                 .anyMatch(n -> n.getBaseUrl().equals(baseUrl));
                         if (!alreadyInResult) {
-                            result.add(new DiscoveredNode(baseUrl, added));
+                            result.add(new DiscoveredNode(baseUrl, deviceType, added));
                         }
                     }
                 } catch (java.net.SocketTimeoutException e) {

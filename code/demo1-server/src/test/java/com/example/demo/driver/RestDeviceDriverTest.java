@@ -294,4 +294,36 @@ class RestDeviceDriverTest {
         List<SimWindow> actual = driver.getWindows(endpoint);
         assertNull(actual);
     }
+
+    // ========== notifyWindow ==========
+
+    @Test
+    void notifyWindow_success_shouldReturnResult() {
+        SimWindow win = new SimWindow();
+        win.setWindowId("win-001");
+        Result<Void> result = Result.success();
+        ResponseEntity<Result<Void>> response = ResponseEntity.ok(result);
+
+        when(restTemplate.exchange(
+                eq("http://192.168.1.100:8086/simulator/device/window/notify"),
+                eq(HttpMethod.POST), any(HttpEntity.class), any(ParameterizedTypeReference.class)))
+                .thenReturn(response);
+
+        Result<Void> actual = driver.notifyWindow(endpoint, List.of(win));
+        assertNotNull(actual);
+        assertEquals(1, actual.getCode());
+    }
+
+    @Test
+    void notifyWindow_nullBody_shouldReturnErrorResult() {
+        ResponseEntity<Result<Void>> response = ResponseEntity.ok(null);
+
+        when(restTemplate.exchange(
+                eq("http://192.168.1.100:8086/simulator/device/window/notify"),
+                eq(HttpMethod.POST), any(HttpEntity.class), any(ParameterizedTypeReference.class)))
+                .thenReturn(response);
+
+        Result<Void> actual = driver.notifyWindow(endpoint, List.of());
+        assertEquals(0, actual.getCode());
+    }
 }

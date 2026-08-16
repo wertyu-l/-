@@ -19,6 +19,9 @@ import java.util.List;
 
 /**
  * 大屏配置 Service 实现
+ * <p>
+ * 负责大屏的创建、查询、删除、单元绑定等操作。
+ * 创建大屏时自动生成 rows×cols 个单元，每个单元必须绑定一个输出设备的通道。
  */
 @Service
 public class ScreenServiceImpl implements ScreenService {
@@ -29,6 +32,15 @@ public class ScreenServiceImpl implements ScreenService {
     @Autowired
     private DeviceMapper deviceMapper;
 
+    /**
+     * 创建大屏
+     * <p>
+     * 校验名称唯一性、单元绑定合法性（设备有效性、通道可用性、分辨率匹配），
+     * 自动生成 rows×cols 个单元并写入数据库。
+     *
+     * @param request 大屏参数（名称、行列数、单元尺寸、每个单元的绑定信息）
+     * @return 大屏详情（含单元列表）
+     */
     @Override
     @Transactional
     public ScreenDetailVO createScreen(ScreenCreateRequest request) {
@@ -104,6 +116,12 @@ public class ScreenServiceImpl implements ScreenService {
         return buildDetail(screen);
     }
 
+    /**
+     * 分页查询大屏列表
+     *
+     * @param dto 分页查询条件（名称模糊搜索）
+     * @return 分页结果
+     */
     @Override
     public PageResult<ScreenPageVO> getPage(ScreenPageDTO dto) {
         if (dto.getPage() == null) dto.setPage(1);
@@ -113,6 +131,12 @@ public class ScreenServiceImpl implements ScreenService {
         return new PageResult<>(page.getTotal(), page.getResult());
     }
 
+    /**
+     * 获取大屏详情（含单元列表）
+     *
+     * @param id 大屏 ID
+     * @return 大屏详情
+     */
     @Override
     public ScreenDetailVO getDetail(Long id) {
         Screen screen = screenMapper.findById(id);
@@ -122,6 +146,11 @@ public class ScreenServiceImpl implements ScreenService {
         return buildDetail(screen);
     }
 
+    /**
+     * 删除大屏（级联删除单元和窗口）
+     *
+     * @param id 大屏 ID
+     */
     @Override
     @Transactional
     public void deleteScreen(Long id) {
@@ -132,6 +161,16 @@ public class ScreenServiceImpl implements ScreenService {
         screenMapper.deleteScreen(id);
     }
 
+    /**
+     * 绑定/更换设备通道
+     * <p>
+     * 校验设备有效性、通道可用性，不支持解绑（只能更换绑定）。
+     *
+     * @param screenId 大屏 ID
+     * @param cellId   单元 ID
+     * @param request  绑定参数（设备 ID、通道名）
+     * @return 更新后的单元 VO
+     */
     @Override
     @Transactional
     public CellVO bindCell(Long screenId, Long cellId, CellBindRequest request) {

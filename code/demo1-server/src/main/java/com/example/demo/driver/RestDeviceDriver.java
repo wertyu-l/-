@@ -155,4 +155,22 @@ public class RestDeviceDriver implements DeviceDriver {
         return null;
     }
 
+    /**
+     * 推送输入设备窗口快照
+     * <p>
+     * 请求 POST {baseUrl}/simulator/device/window/notify，body 为完整窗口列表。
+     */
+    @Override
+    public Result<Void> notifyWindow(DeviceEndpoint endpoint, List<SimWindow> windows) {
+        String url = endpoint.getBaseUrl() + "/simulator/device/window/notify";
+        HttpEntity<List<SimWindow>> request = new HttpEntity<>(windows);
+        ResponseEntity<Result<Void>> response = restTemplate.exchange(
+                url, HttpMethod.POST, request,
+                new ParameterizedTypeReference<Result<Void>>() {});
+        if (response.getBody() != null) {
+            return response.getBody();
+        }
+        return Result.error("请求失败");
+    }
+
 }

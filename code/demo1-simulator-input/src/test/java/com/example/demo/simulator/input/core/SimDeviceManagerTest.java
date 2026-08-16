@@ -7,6 +7,7 @@ import com.example.demo.model.SimWindow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -18,8 +19,9 @@ import static org.mockito.Mockito.*;
 /**
  * SimDeviceManager（输入模拟器）单元测试
  * <p>
- * 覆盖输入模拟设备的窗口创建、更新、删除、状态查询、设备信息/能力查询的完整流程，
- * 重点验证输入通道校验（HDMI-1/HDMI-2）、能力开关（移动/缩放）、重复窗口检测。
+ * 覆盖输入模拟设备的窗口快照反馈（notify）、状态查询、设备信息/能力查询的完整流程，
+ * 重点验证输入通道校验（HDMI-1/HDMI-2）、快照整体替换、通道播放地址管理。
+ * 输入设备作为被动信号源，不再提供窗口的增删改查。
  */
 @ExtendWith(MockitoExtension.class)
 class SimDeviceManagerTest {
@@ -39,9 +41,6 @@ class SimDeviceManagerTest {
         info.setInputChannel2("HDMI-2");
 
         SimDeviceCapability cap = new SimDeviceCapability();
-        cap.setSupportMove(true);
-        cap.setSupportResize(true);
-        cap.setSupportOverlay(true);
         cap.setChannelCount(5);
         cap.setMaxWindows(4);
 
@@ -50,189 +49,66 @@ class SimDeviceManagerTest {
         manager = new SimDeviceManager(repo);
     }
 
-    // ========== 窗口创建 ==========
+    // ========== 窗口快照反馈（notify） ==========
 
     /**
-     * 正常创建窗口应返回包含 windowId 和创建时间的结果
+     * notify 应用完整快照整体替换本地窗口列表
      */
     @Test
-    void createWindow_valid_shouldSucceed() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-1");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-1")).thenReturn(null);
-        SimWindow result = manager.createWindow(window);
-        assertNotNull(result);
-        assertEquals("win-001", result.getWindowId());
-        assertEquals("HDMI-1", result.getChannelName());
-        assertNotNull(result.getCreateTime());
-        verify(repo).insertWindow(window);
+    void notifyWindows_shouldReplaceAll() {
+        SimWindow w1 = new SimWindow();
+        w1.setWindowId("win-001");
+        w1.setChannelName("HDMI-1");
+        SimWindow w2 = new SimWindow();
+        w2.setWindowId("win-002");
+        w2.setChannelName("HDMI-2");
+        List<SimWindow> snapshot = List.of(w1, w2);
+
+        manager.notifyWindows(snapshot);
+
+        verify(repo).replaceAllWindows(snapshot);
     }
 
     /**
-     * 重复创建同窗口应返回 null
+     * notify 空列表表示全部窗口关闭
      */
     @Test
-    void createWindow_duplicate_shouldReturnNull() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-1");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-1")).thenReturn(new SimWindow());
-        assertNull(manager.createWindow(window));
+    void notifyWindows_empty_shouldReplaceWithEmpty() {
+        manager.notifyWindows(List.of());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SimWindow>> captor = ArgumentCaptor.forClass(List.class);
+        verify(repo).replaceAllWindows(captor.capture());
+        assertTrue(captor.getValue().isEmpty());
     }
 
     /**
-     * 使用无效通道创建窗口应返回 null
+     * notify 为 null 时视为空列表
      */
     @Test
-    void createWindow_invalidChannel_shouldReturnNull() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("INVALID");
-        when(repo.findByWindowIdAndChannel("win-001", "INVALID")).thenReturn(null);
-        assertNull(manager.createWindow(window));
+    void notifyWindows_null_shouldTreatAsEmpty() {
+        manager.notifyWindows(null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SimWindow>> captor = ArgumentCaptor.forClass(List.class);
+        verify(repo).replaceAllWindows(captor.capture());
+        assertTrue(captor.getValue().isEmpty());
     }
 
     /**
-     * 未指定尺寸/位置时应使用默认值（1920x1080, 原点）
+     * notify 时为空 sourceType/sourceUrl 的窗口应根据通道补全
      */
     @Test
-    void createWindow_nullDefaults_shouldSetDefaults() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-1");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-1")).thenReturn(null);
-        SimWindow result = manager.createWindow(window);
-        assertEquals(0, result.getX());
-        assertEquals(0, result.getY());
-        assertEquals(1920, result.getWidth());
-        assertEquals(1080, result.getHeight());
-    }
-
-    /**
-     * 创建窗口时应从通道获取信号源 URL
-     */
-    @Test
-    void createWindow_sourceUrlFromChannel_shouldUseChannelUrl() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-1");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-1")).thenReturn(null);
+    void notifyWindows_shouldFillSourceTypeAndUrl() {
+        SimWindow w = new SimWindow();
+        w.setWindowId("win-001");
+        w.setChannelName("HDMI-1");
         when(repo.getChannelUrl("HDMI-1")).thenReturn("rtsp://camera1/stream");
-        SimWindow result = manager.createWindow(window);
-        assertEquals("rtsp://camera1/stream", result.getSourceUrl());
-    }
 
-    /**
-     * HDMI 通道的窗口应自动推断 sourceType 为 HDMI
-     */
-    @Test
-    void createWindow_sourceTypeHDMI_shouldInferHDMI() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-1");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-1")).thenReturn(null);
-        SimWindow result = manager.createWindow(window);
-        assertEquals("HDMI", result.getSourceType());
-    }
+        manager.notifyWindows(List.of(w));
 
-    /**
-     * HDMI-2 通道的窗口也应推断为 HDMI 类型
-     */
-    @Test
-    void createWindow_sourceTypeHDMI2_shouldInferHDMI() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        window.setChannelName("HDMI-2");
-        when(repo.findByWindowIdAndChannel("win-001", "HDMI-2")).thenReturn(null);
-        SimWindow result = manager.createWindow(window);
-        assertEquals("HDMI", result.getSourceType());
-    }
-
-    // ========== 窗口更新 ==========
-
-    /**
-     * 更新不存在的窗口应返回 null
-     */
-    @Test
-    void updateWindow_notFound_shouldReturnNull() {
-        when(repo.findWindowById("win-999")).thenReturn(null);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        assertNull(manager.updateWindow("win-999", update));
-    }
-
-    /**
-     * 设备不支持移动时，移动操作应返回 null
-     */
-    @Test
-    void updateWindow_moveNotSupported_shouldReturnNull() {
-        SimDeviceCapability cap = manager.getDeviceCapability();
-        cap.setSupportMove(false);
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("HDMI-1");
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        assertNull(manager.updateWindow("win-001", update));
-    }
-
-    /**
-     * 设备不支持缩放时，缩放操作应返回 null
-     */
-    @Test
-    void updateWindow_resizeNotSupported_shouldReturnNull() {
-        SimDeviceCapability cap = manager.getDeviceCapability();
-        cap.setSupportResize(false);
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("HDMI-1");
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setWidth(800);
-        assertNull(manager.updateWindow("win-001", update));
-    }
-
-    /**
-     * 正常更新窗口应成功修改坐标
-     */
-    @Test
-    void updateWindow_success_shouldUpdate() {
-        SimWindow existing = new SimWindow();
-        existing.setWindowId("win-001");
-        existing.setChannelName("HDMI-1");
-        existing.setX(0);
-        existing.setY(0);
-        when(repo.findWindowById("win-001")).thenReturn(existing);
-        SimWindow update = new SimWindow();
-        update.setX(100);
-        update.setY(200);
-        SimWindow result = manager.updateWindow("win-001", update);
-        assertNotNull(result);
-        assertEquals(100, result.getX());
-        assertEquals(200, result.getY());
-        verify(repo).updateWindow(existing);
-    }
-
-    // ========== 窗口关闭/删除 ==========
-
-    /**
-     * 关闭存在的窗口应返回 true
-     */
-    @Test
-    void closeWindow_success_shouldReturnTrue() {
-        when(repo.deleteWindow("win-001")).thenReturn(true);
-        assertTrue(manager.closeWindow("win-001"));
-    }
-
-    /**
-     * 关闭不存在的窗口应返回 false
-     */
-    @Test
-    void closeWindow_notFound_shouldReturnFalse() {
-        when(repo.deleteWindow("win-999")).thenReturn(false);
-        assertFalse(manager.closeWindow("win-999"));
+        assertEquals("HDMI", w.getSourceType());
+        assertEquals("rtsp://camera1/stream", w.getSourceUrl());
     }
 
     // ========== 设备状态查询 ==========
@@ -303,8 +179,7 @@ class SimDeviceManagerTest {
     @Test
     void getDeviceCapability_shouldReturnCapability() {
         SimDeviceCapability cap = manager.getDeviceCapability();
-        assertTrue(cap.isSupportMove());
-        assertTrue(cap.isSupportResize());
+        assertNotNull(cap);
     }
 
     // ========== 设备能力更新 ==========
@@ -315,13 +190,11 @@ class SimDeviceManagerTest {
     @Test
     void updateDeviceCapability_shouldUpdateFields() {
         SimDeviceCapability newCap = new SimDeviceCapability();
-        newCap.setSupportMove(false);
-        newCap.setSupportResize(false);
-        newCap.setSupportOverlay(false);
+        newCap.setMaxResolution("3840x2160");
+        newCap.setChannelCount(2);
         SimDeviceCapability result = manager.updateDeviceCapability(newCap);
-        assertFalse(result.isSupportMove());
-        assertFalse(result.isSupportResize());
-        assertFalse(result.isSupportOverlay());
+        assertEquals("3840x2160", result.getMaxResolution());
+        assertEquals(2, result.getChannelCount());
         verify(repo).updateCapability(result);
     }
 
@@ -354,16 +227,5 @@ class SimDeviceManagerTest {
     void getWindows_shouldReturnList() {
         when(repo.findAllWindows()).thenReturn(List.of(new SimWindow()));
         assertEquals(1, manager.getWindows().size());
-    }
-
-    /**
-     * 按 ID 查询窗口应返回对应窗口
-     */
-    @Test
-    void getWindow_shouldReturnWindow() {
-        SimWindow window = new SimWindow();
-        window.setWindowId("win-001");
-        when(repo.findWindowById("win-001")).thenReturn(window);
-        assertEquals(window, manager.getWindow("win-001"));
     }
 }

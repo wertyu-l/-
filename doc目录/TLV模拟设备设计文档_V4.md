@@ -14,6 +14,18 @@ TLV 模拟设备是 V4 阶段新增的**第二类异构设备**，通过 UDP + T
 > - **输入设备（`deviceCategory = "INPUT"`）：** 拥有输入通道，负责提供信号源。输入设备不支持窗口操作，仅提供设备信息、状态、能力查询接口，以及通道播放地址设置。支持接收管控系统推送的窗口信息反馈（`CMD_NOTIFY_WINDOW`）。
 > - **输出设备（`deviceCategory = "OUTPUT"`）：** 拥有输出通道，用于大屏绑定显示。支持窗口创建/关闭/查询/更新。通过声明设备能力，管控系统据此做布局校验。
 
+### 1.2 技术选型
+
+| 选型 | 方案 | 说明 |
+|------|------|------|
+| 框架 | Spring Boot 空壳模式 | 只用 IoC 容器管理 Bean，不启动 Tomcat/SpringMVC |
+| 启动 | SpringApplication.run() + WebApplicationType.NONE | main 方法启动，与 REST 模拟器形式统一 |
+| 通信 | UDP + TLV 二进制协议 | 与管控系统通过 TLV 帧通信 |
+| 前端 | JDK 内置 HttpServer | 零依赖，提供静态页面 + JSON API |
+| 配置 | JSON 文件 | 启动时从 resources 加载，不依赖数据库 |
+
+> Spring Boot 空壳模式：SpringApplication 设置 setWebApplicationType(WebApplicationType.NONE)，仅启动 IoC 容器，不启动内嵌 Web 服务器。所有 Bean（如 TlvServer、DiscoveryListener、FrontendServer）通过 @Component + @PostConstruct 自动装配和启动。
+
 ---
 
 ## 2. 模块结构
@@ -49,6 +61,10 @@ demo1-simulator-tlv-input/
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
+    ├── frontend/
+    │   ├── FrontendServer.java         ← JDK HttpServer 前端管理
+    │   └── static/
+    │       └── index.html              ← 前端管理页面
     ├── handler/
     │   ├── GetInfoHandler.java         ← 查询设备信息
     │   ├── GetStatusHandler.java       ← 查询设备状态
@@ -57,6 +73,7 @@ demo1-simulator-tlv-input/
         ├── SimDeviceManager.java       ← 设备管理核心（含通道-窗口占用映射）
         └── DeviceConfig.java           ← 设备配置加载（从 JSON 文件读取）
 ```
+├── pom.xml
 
 **demo1-simulator-tlv-output**（输出设备模块）
 
@@ -71,6 +88,10 @@ demo1-simulator-tlv-output/
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
+    ├── frontend/
+    │   ├── FrontendServer.java         ← JDK HttpServer 前端管理
+    │   └── static/
+    │       └── index.html              ← 前端管理页面
     ├── handler/
     │   ├── GetInfoHandler.java         ← 查询设备信息
     │   ├── GetStatusHandler.java       ← 查询设备状态
@@ -81,6 +102,7 @@ demo1-simulator-tlv-output/
         ├── SimDeviceManager.java       ← 设备管理核心（窗口存内存）
         └── DeviceConfig.java           ← 设备配置加载（从 JSON 文件读取）
 ```
+├── pom.xml
 
 > 添加设备只需新增对应的 JSON 配置文件，启动新进程即可。
 
@@ -93,6 +115,26 @@ demo1-server/src/main/java/com/example/demo/driver/
     └── TlvDeviceDriver.java       (新增 - UDP + TLV 驱动)
 ```
 ---
+### 2.2 依赖清单
+
+**demo1-simulator-tlv-input / demo1-simulator-tlv-output**（pom.xml）：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>demo1-common</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+</dependencies>
+```
+
+> spring-boot-starter 仅引入 Spring IoC 核心依赖，不包含 spring-boot-starter-web（无 Tomcat/SpringMVC）。零额外依赖，JDK HttpServer 为 JDK 内置。
+
 
 ## 3. 设备配置
 
@@ -129,8 +171,8 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
     "inputChannel5": ""
   },
   "server": {
-    "udpPort": 8090,
-    "discoveryPort": 9996
+    "port": 8090,
+    "discoveryPort": 9995
   }
 }
 ```
@@ -168,8 +210,8 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
     "outputChannel5": ""
   },
   "server": {
-    "udpPort": 8091,
-    "discoveryPort": 9995
+    "port": 8092,
+    "discoveryPort": 9993
   }
 }
 ```
@@ -208,7 +250,7 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| udpPort | int | UDP 通信端口 |
+| port | int | 设备端口号（TCP 前端 + UDP 通信，共用） |
 | discoveryPort | int | 设备发现 UDP 端口 |
 
 ---
@@ -854,8 +896,8 @@ DeviceDriver.getInfo(endpoint)
 ```text
 管控系统启动
   │
-  ├── UDP 广播:255.255.255.255:9993 → TLV 输入设备-1 (:8090)
-  └── UDP 广播:255.255.255.255:9995 → TLV 输出设备-1 (:8092)
+  ├── UDP 广播:255.255.255.255:9995 → TLV 输入设备
+  └── UDP 广播:255.255.255.255:9993 → TLV 输出设备
 
 各 TLV 模拟设备 DiscoveryListener 收到 {"action":"discovery"}
   └── 单播回复 {"deviceType":"TLV","baseUrl":"udp://192.168.1.100:8090"}
@@ -907,12 +949,12 @@ DeviceDriver.getInfo(endpoint)
 
 系统提供 4 台 TLV 模拟设备，通过 `main` 方法启动不同进程。每台设备进程启动后自动初始化，管控系统启动后即可直接查询。
 
-| 模块 |  端口  | UDP端口 | UDP发现 | 类别 | 通道 | maxWindows |
-|------|:----:|:-----:|:-----:|:--:|------|:--:|
-| demo1-simulator-tlv-input | 8090 | 8090  | 9993  | INPUT | 1个输入：HDMI-1 | — |
-| demo1-simulator-tlv-input | 8091 | 8091  | 9994  | INPUT | 2个输入：HDMI-1, HDMI-2 | — |
-| demo1-simulator-tlv-output | 8092 | 8092  | 9995  | OUTPUT | 2个输出：OUT-1, OUT-2 | 4 |
-| demo1-simulator-tlv-output | 8093 | 8093  | 9996  | OUTPUT | 3个输出：OUT-1, OUT-2, OUT-3 | 6 |
+| 模块 | 端口 | 发现端口 | 类别 | 通道 | maxWindows |
+|------|:--:|:--:|:--:|------|:--:|
+| demo1-simulator-tlv-input | 8090 | 9995 | INPUT | 1个输入：HDMI-1 | — |
+| demo1-simulator-tlv-input | 8091 | 9994 | INPUT | 2个输入：HDMI-1, HDMI-2 | — |
+| demo1-simulator-tlv-output | 8092 | 9993 | OUTPUT | 2个输出：OUT-1, OUT-2 | 4 |
+| demo1-simulator-tlv-output | 8093 | 9992 | OUTPUT | 3个输出：OUT-1, OUT-2, OUT-3 | 6 |
 
 ### 7.2 存储方式
 
@@ -934,47 +976,41 @@ DeviceDriver.getInfo(endpoint)
 
 ### 7.3 启动方式
 
-通过 `main` 方法启动，命令行参数传入配置文件和端口号，**一个进程 = 一台设备**。
+**一进程一设备**，每个设备对应一个 JSON 配置文件，文件名按端口号命名，如 `device-8090.json`。`main` 方法接收端口号作为参数，启动 Spring Boot 空壳容器。
 
-**SimulatorApplication.java（输入设备）：**
+**SimulatorApplication.java：**
 
 ```java
+@SpringBootApplication
 public class SimulatorApplication {
     public static void main(String[] args) {
-        String configPath = args[0];   // 配置文件路径，如 device-8090.json
-        int port = Integer.parseInt(args[1]);  // UDP 端口号，如 8090
+        int port = Integer.parseInt(args[0]);  // 端口号，如 8090
 
-        // 1. 从 JSON 加载设备配置
-        DeviceConfig config = DeviceConfig.load(configPath);
+        SpringApplication app = new SpringApplication(SimulatorApplication.class);
+        app.setWebApplicationType(WebApplicationType.NONE);  // 不启动 Tomcat/SpringMVC
+        app.setDefaultProperties(Collections.singletonMap("server.port", port));
+        app.run(args);
 
-        // 2. 创建并启动 TlvServer
-        TlvServer server = new TlvServer(config, port);
-        server.registerHandler(0x0001, new GetInfoHandler(config));
-        server.registerHandler(0x0002, new GetStatusHandler(config));
-        server.registerHandler(0x0010, new CreateWindowHandler(config));
-        // ... 注册其他 Handler
-
-        // 3. 启动 UDP 监听（死循环 recv，阻塞当前线程）
-        server.start();
+        // TlvServer、DiscoveryListener、FrontendServer 通过 @Component + @PostConstruct 自动启动
     }
 }
 ```
 
-**多设备启动：** 同一份代码，通过命令行参数传入不同配置启动多个进程，添加设备只需新增 JSON 配置文件并启动新进程：
+> `WebApplicationType.NONE` 仅启动 IoC 容器，不启动内嵌 Web 服务器。`TlvServer`（UDP）、`DiscoveryListener`（UDP）、`FrontendServer`（JDK HttpServer）均通过 `@Component` + `@PostConstruct` 自动装配和启动。
 
-```bash
-# TLV 输入设备模块：启动 2 个进程
-java -jar demo1-simulator-tlv-input.jar device-8090.json 8090  # TLV 输入设备-1
-java -jar demo1-simulator-tlv-input.jar device-8091.json 8091  # TLV 输入设备-2
+**IDEA 运行配置：** 创建 4 个 Run Configuration，每个只填端口号，启动即为一台设备，可单独启停：
 
-# TLV 输出设备模块：启动 2 个进程
-java -jar demo1-simulator-tlv-output.jar device-8092.json 8092  # TLV 输出设备-1
-java -jar demo1-simulator-tlv-output.jar device-8093.json 8093  # TLV 输出设备-2
+```
+IDEA Run Configurations:
+  ├── TLV-Input-8090    → Program arguments: 8090
+  ├── TLV-Input-8091    → Program arguments: 8091
+  ├── TLV-Output-8092   → Program arguments: 8092
+  └── TLV-Output-8093   → Program arguments: 8093
 ```
 
-> **IDEA 开发调试：** 在 IDEA 中创建多个 Run Configuration，每个指定不同的 Program arguments（如 `device-8090.json 8090`），即可同时调试多台设备。
+> **部署运行：** 也支持命令行方式 `java -jar demo1-simulator-tlv-input.jar 8090`，本质相同。
 
-
+### 7.3.1 TlvServer 设计
 ### 7.3.1 TlvServer 设计
 
 `TlvServer` 是模拟设备的核心，负责 UDP 监听和命令分发。编解码器（`TlvEncoder`、`TlvDecoder`、`TlvFieldCodec`、`Crc16`）已在 `demo1-common` 中实现，`TlvServer` 只需调用即可。
@@ -1217,13 +1253,13 @@ TAG_ERROR_MSG(0x0C) = 错误描述  ← string
 
 管控系统通过 `DeviceDriver` 统一接口调用两类设备，业务代码不感知设备类型差异。TLV 模拟设备与管控系统是**两个独立进程**，各自启动：
 
-| 模块                  | 端口 | 说明 |
-|---------------------|------|------|
-| demo1-server（管控系统）  | 8085 | 通过 `mvn spring-boot:run` 启动 |
-| TLV 输入设备-1（端口 8090） | 8090 | `java -jar` + 命令行参数启动，1个输入通道，仅查询接口 + 窗口信息反馈 |
-| TLV 输入设备-2（端口 8091） | 8091 | `java -jar` + 命令行参数启动，2个输入通道，仅查询接口 + 窗口信息反馈 |
-| TLV 输出设备-1（端口 8092） | 8092 | `java -jar` + 命令行参数启动，2个输出通道，创建/关闭/更新/查询窗口 |
-| TLV 输出设备-2（端口 8093） | 8093 | `java -jar` + 命令行参数启动，3个输出通道，创建/关闭/更新/查询窗口 |
+| 模块 | 端口 | 发现端口 | 说明 |
+|------|:--:|:--:|------|
+| demo1-server（管控系统） | - | - | 通过 IDEA / mvn 启动 |
+| TLV 输入设备-1 | 8090 | 9995 | 1个输入通道，仅查询接口 + 窗口信息反馈 |
+| TLV 输入设备-2 | 8091 | 9994 | 2个输入通道，仅查询接口 + 窗口信息反馈 |
+| TLV 输出设备-1 | 8092 | 9993 | 2个输出通道，创建/关闭/更新/查询窗口 |
+| TLV 输出设备-2 | 8093 | 9992 | 3个输出通道，创建/关闭/更新/查询窗口 |
 
 ```text
 DeviceDriver (接口)
@@ -1237,3 +1273,113 @@ DeviceDriver (接口)
             ├── 依赖 demo1-common/codec/TlvDecoder    ← 外层帧解码
             └── 依赖 demo1-common/codec/TlvFieldCodec ← 内层字段编解码
 ```
+
+---
+
+## 8. 模拟设备前端
+
+### 8.1 概述
+
+每台 TLV 模拟设备通过 JDK 内置 `HttpServer` 提供前端管理页面，用于浏览器查看设备状态、内存窗口列表等调试信息。
+
+| 特性 | 说明 |
+|------|------|
+| 技术 | JDK 内置 `com.sun.net.httpserver.HttpServer` |
+| 端口 | 与 UDP 通信共用同一端口（TCP 连接） |
+| 功能 | 静态页面 + JSON API |
+| 依赖 | 零额外依赖 |
+
+### 8.2 架构
+
+```text
+浏览器                     HttpServer (port)              Spring IoC 容器
+  │                            │                              │
+  ├── GET / ──────────────────→│  返回 static/index.html       │
+  ├── GET /api/device ────────→│  调用 DeviceConfig.getBean()  │
+  ├── GET /api/windows ───────→│  调用 SimDeviceManager.getBean()  │
+  ├── GET /api/capability ────→│  调用 DeviceConfig.getBean()  │
+  └── POST /api/refresh ──────→│  刷新内存数据                │
+```
+
+### 8.3 FrontendServer 设计
+
+```java
+@Component
+public class FrontendServer {
+
+    @Value("${server.port}")
+    private int port;
+
+    @Autowired
+    private DeviceConfig deviceConfig;
+
+    @Autowired
+    private SimDeviceManager deviceManager;
+
+    private HttpServer httpServer;
+
+    @PostConstruct
+    public void start() throws IOException {
+        httpServer = HttpServer.create(new InetSocketAddress(port), 0);
+        httpServer.setExecutor(Executors.newFixedThreadPool(2));
+
+        httpServer.createContext("/", exchange -> {
+            // 返回 static/index.html 静态页面
+            byte[] bytes = Files.readAllBytes(Paths.get("static/index.html"));
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+
+        httpServer.createContext("/api/device", exchange -> {
+            // JSON API: 返回设备信息
+            String json = objectMapper.writeValueAsString(deviceConfig.getDeviceInfo());
+            sendJson(exchange, json);
+        });
+
+        httpServer.createContext("/api/windows", exchange -> {
+            // JSON API: 返回窗口列表
+            String json = objectMapper.writeValueAsString(deviceManager.getWindows());
+            sendJson(exchange, json);
+        });
+
+        httpServer.createContext("/api/capability", exchange -> {
+            // JSON API: 返回设备能力
+            String json = objectMapper.writeValueAsString(deviceConfig.getDeviceCapability());
+            sendJson(exchange, json);
+        });
+
+        httpServer.start();
+    }
+
+    @PreDestroy
+    public void stop() {
+        if (httpServer != null) {
+            httpServer.stop(0);
+        }
+    }
+}
+```
+
+### 8.4 前端管理页面
+
+`index.html` 为纯静态页面，通过 fetch 调用本机 JSON API，展示设备状态和窗口列表。
+
+### 8.5 三通道端口汇总
+
+| 通道 | 协议 | 端口 | 说明 |
+|------|------|:--:|------|
+| 管控系统 ↔ 模拟器 | UDP + TLV 二进制 | port | 业务指令下发与响应 |
+| 设备发现 | UDP 广播 | discoveryPort | 管控系统扫描局域网设备 |
+| 前端管理页面 | HTTP（JDK HttpServer） | port（TCP） | 浏览器查看/调试设备状态 |
+
+### 8.6 端口规划
+
+| 模块 | 端口 | 发现端口 |
+|------|:--:|:--:|
+| TLV 输入设备-1 | 8090 | 9995 |
+| TLV 输入设备-2 | 8091 | 9994 |
+| TLV 输出设备-1 | 8092 | 9993 |
+| TLV 输出设备-2 | 8093 | 9992 |
+
+> 设备端口（TCP 前端 + UDP 通信）和发现端口（UDP 广播）分离，与 REST 模拟器模式一致。端口范围 8090-8093 与 REST 模拟器（8086-8089）不重叠，发现端口 9992-9995 与 REST 模拟器（9996-9999）不重叠。

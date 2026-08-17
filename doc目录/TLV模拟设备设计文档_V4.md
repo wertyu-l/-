@@ -156,10 +156,6 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
     "inputChannel3": "",
     "inputChannel4": "",
     "inputChannel5": ""
-  },
-  "server": {
-    "port": 8090,
-    "discoveryPort": 9995
   }
 }
 ```
@@ -195,10 +191,6 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
     "outputChannel3": "",
     "outputChannel4": "",
     "outputChannel5": ""
-  },
-  "server": {
-    "port": 8092,
-    "discoveryPort": 9993
   }
 }
 ```
@@ -232,13 +224,6 @@ TLV 模拟设备不使用数据库，设备信息和能力通过 JSON 配置文�
 | channelCount | int | 通道数 |
 | inputChannel1~5 | String | 输入通道名称（仅输入设备） |
 | outputChannel1~5 | String | 输出通道名称（仅输出设备） |
-
-**server — 服务配置**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| port | int | 设备端口号（TCP 前端 + UDP 通信，共用） |
-| discoveryPort | int | 设备发现 UDP 端口 |
 
 ---
 
@@ -436,10 +421,6 @@ public class TlvCommand {
     public static final int RESP_ERROR         = 0xFFFF;  // 错误响应
 }
 ```
-
----
-
-
 
 ---
 

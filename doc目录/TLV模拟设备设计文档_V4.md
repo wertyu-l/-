@@ -977,13 +977,14 @@ java -jar demo1-simulator-tlv-output.jar device-8093.json 8093  # TLV 输出设�
 
 ### 7.3.1 TlvServer 设计
 
-`TlvServer` 是模拟设备的核心，负责 UDP 监听和命令分发。编解码器（`TlvEncoder`、`TlvDecoder`、`TlvFieldCodec`）已在 `demo1-common` 中实现，`TlvServer` 只需调用即可。
+`TlvServer` 是模拟设备的核心，负责 UDP 监听和命令分发。编解码器（`TlvEncoder`、`TlvDecoder`、`TlvFieldCodec`、`Crc16`）已在 `demo1-common` 中实现，`TlvServer` 只需调用即可。
 
 #### 核心职责
 
 - 监听指定 UDP 端口，接收管控系统下发的 TLV 命令帧
+- 校验 Magic 和 CRC16，过滤非法/损坏数据包
 - 根据命令类型（Type 字段）将请求分发到对应的命令处理器（CmdHandler）
-- 将处理器返回的响应字节序列通过 UDP 原路发回
+- 将处理器返回的响应字节序列通过 UDP 原路发回（Seq 原样回填）
 
 #### 核心组件
 
@@ -996,20 +997,25 @@ java -jar demo1-simulator-tlv-output.jar device-8093.json 8093  # TLV 输出设�
 #### 请求处理流程
 
 ```
-UDP 收包 → TlvDecoder 解码外层帧（拿到 Type、Value）
+UDP 收包 → TlvDecoder 解码外层帧
+    → 校验 Magic（不匹配则丢弃）
+    → 校验 CRC16（不匹配则丢弃）
+    → 提取 Seq、Type、Value
     → handlerMap 根据 Type 查找对应 CmdHandler
     → CmdHandler.handle(Value) 处理请求
         → 内部：TlvFieldCodec 解码 Value 中各字段
         → 业务逻辑处理
-        → TlvFieldCodec 编码响应字段 → TlvEncoder 编码外层帧
+        → TlvFieldCodec 编码响应字段 → TlvEncoder.encode(seq, frame) 编码外层帧（含 Magic、CRC16，Seq 原样回填）
     → UDP 发送响应帧
 ```
 
 #### 设计要点
 
 - `main` 方法负责读取配置、创建 Handler、注册到 `TlvServer`；`TlvServer.start()` 启动死循环监听 UDP 端口
-- 收到数据后根据命令号从 `handlerMap` 取出对应 Handler 执行
+- 收到数据后先校验 Magic 和 CRC16，校验失败静默丢弃
+- 通过后根据命令号从 `handlerMap` 取出对应 Handler 执行
 - Handler 内部完成解码 → 业务处理 → 编码 → 返回响应
+- 响应帧 Seq 原样回填请求帧的 Seq，实现请求-响应匹配
 - 整个链路无 Spring Boot 依赖，纯 Java 标准库实现
 - 新增命令只需新增一个 CmdHandler 实现类并注册即可，无需修改 TlvServer 核心代码
 ### 7.4 TLV 协议帧格式
@@ -1017,18 +1023,22 @@ UDP 收包 → TlvDecoder 解码外层帧（拿到 Type、Value）
 #### 7.4.1 外层帧（命令级）
 
 ```
-+---------+---------+-------------------+
-|  Type   | Length  |  Value (TLV列表)  |
-| 2 bytes | 2 bytes |   N bytes         |
-+---------+---------+-------------------+
++---------+---------+---------+---------+-------------------+---------+
+|  Magic  |   Seq   |  Type   | Length  |  Value (TLV列表)  |  CRC16  |
+| 2 bytes | 2 bytes | 2 bytes | 2 bytes |     N bytes       | 2 bytes |
++---------+---------+---------+---------+-------------------+---------+
+|                    Header (8 bytes)     |     Payload       |  Tail   |
++-----------------------------------------+-------------------+---------+
 ```
 
 | 字段 | 字节数 | 说明 |
 |------|--------|------|
+| Magic | 2 | 固定值 `0xEB 0x90`，用于快速识别 TLV 协议帧，过滤非协议包 |
+| Seq | 2 | 序列号（大端序），用于请求-响应匹配。请求方自增生成，响应方原样回填 |
 | Type | 2 | 命令类型，标识请求/响应语义（大端序） |
 | Length | 2 | Value 部分的总字节长度（大端序） |
 | Value | N | 内层 TLV 字段序列 |
-
+| CRC16 | 2 | CRC-16/XMODEM 校验（多项式 `0x1021`），覆盖范围：Magic + Seq + Type + Length + Value，大端序。校验失败静默丢弃 |
 #### 7.4.2 内层字段（字段级）
 
 Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
@@ -1059,7 +1069,7 @@ Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
 
 **空值/可选字段处理：** 可选字段（如 `x`、`y`、`width`、`height`）不传时直接不编码，接收方按默认值处理。空字符串编码为 Length=0、Value 为空。
 
-> 外层用 2+2 字节头（Type+Length），内层用 1+1 字节头（Tag+Length）——外层命令空间大、Value 可能超过 255 字节；内层单字段通常不超过 255 字节，1 字节头节省开销。
+> 外层用 2+2+2+2 字节头（Magic+Seq+Type+Length）+ 2 字节尾（CRC16），内层用 1+1 字节头（Tag+Length）——Magic 用于帧识别，Seq 用于请求-响应匹配，CRC16 保证数据完整性；外层命令空间大、Value 可能超过 255 字节；内层单字段通常不超过 255 字节，1 字节头节省开销。
 
 ### 7.5 编解码器设计
 
@@ -1069,21 +1079,49 @@ Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
 
 | 层级 | 类 | 职责 |
 |------|-----|------|
-| 外层帧 | `TlvEncoder` / `TlvDecoder` | 编解码 Type + Length + Value 外层帧，不关心 Value 内部格式 |
+| 帧校验 | `Crc16` | CRC-16/XMODEM 校验（多项式 `0x1021`），提供 `compute(byte[])` 和 `verify(byte[])` |
+| 外层帧 | `TlvEncoder` / `TlvDecoder` | 编解码 Magic + Seq + Type + Length + Value + CRC16 外层帧，不关心 Value 内部格式 |
 | 内层字段 | `TlvFieldCodec` | 编解码 Value 内部的 Tag-Length-Value 字段序列 |
+
+**Crc16.java**
+
+```java
+public class Crc16 {
+    // CRC-16/XMODEM 多项式 0x1021
+    public static short compute(byte[] data);
+    public static short compute(byte[] data, int offset, int length);
+
+    // 校验：data 末尾 2 字节为 CRC16，重算后比对
+    public static boolean verify(byte[] data);
+}
+```
 
 **TlvEncoder.java**
 
 ```java
 public class TlvEncoder {
-    public static byte[] encode(TlvFrame frame) {
+    public static byte[] encode(int seq, TlvFrame frame) {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        // Magic
+        bos.write(0xEB);
+        bos.write(0x90);
+        // Seq
+        bos.write((seq >> 8) & 0xFF);
+        bos.write(seq & 0xFF);
+        // Type
         bos.write((frame.getType() >> 8) & 0xFF);
         bos.write(frame.getType() & 0xFF);
+        // Length
         int len = frame.getLength();
         bos.write((len >> 8) & 0xFF);
         bos.write(len & 0xFF);
+        // Value
         bos.write(frame.getValue());
+        // CRC16（覆盖前面所有字节）
+        byte[] data = bos.toByteArray();
+        short crc = Crc16.compute(data);
+        bos.write((crc >> 8) & 0xFF);
+        bos.write(crc & 0xFF);
         return bos.toByteArray();
     }
 }
@@ -1094,11 +1132,22 @@ public class TlvEncoder {
 ```java
 public class TlvDecoder {
     public static TlvFrame decode(byte[] data) {
-        int type = ((data[0] & 0xFF) << 8) | (data[1] & 0xFF);
-        int length = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+        // 1. 校验 Magic
+        if ((data[0] & 0xFF) != 0xEB || (data[1] & 0xFF) != 0x90) {
+            throw new IllegalArgumentException("Invalid magic number");
+        }
+        // 2. 校验 CRC16
+        if (!Crc16.verify(data)) {
+            throw new IllegalArgumentException("CRC16 mismatch");
+        }
+        // 3. 提取字段
+        int seq = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+        int type = ((data[4] & 0xFF) << 8) | (data[5] & 0xFF);
+        int length = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
         byte[] value = new byte[length];
-        System.arraycopy(data, 4, value, 0, length);
+        System.arraycopy(data, 8, value, 0, length);
         TlvFrame frame = new TlvFrame(type, length, value);
+        frame.setSeq(seq);
         frame.setFields(TlvFieldCodec.decodeFields(value));
         return frame;
     }
@@ -1133,8 +1182,7 @@ public class TlvFieldCodec {
 }
 ```
 
-> **使用方：** 管控侧 `TlvDeviceDriver` 调 `TlvFieldCodec.encodeFields()` 编请求字段 → `TlvEncoder.encode()` 编外层帧；模拟器侧 `TlvServer` 调 `TlvDecoder.decode()` 解外层帧 → `TlvFieldCodec.decodeFields()` 解字段。响应方向同理。
-
+> **使用方：** 管控侧 `TlvDeviceDriver` 生成 Seq → 调 `TlvFieldCodec.encodeFields()` 编请求字段 → `TlvEncoder.encode(seq, frame)` 编外层帧（含 Magic、CRC16）；模拟器侧 `TlvServer` 调 `TlvDecoder.decode()` 解外层帧（校验 Magic、CRC16） → `TlvFieldCodec.decodeFields()` 解字段。响应方向同理，Seq 原样回填。
 ### 7.6 超时与重试
 
 | 参数 | 值 | 说明 |

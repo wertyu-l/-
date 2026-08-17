@@ -1,0 +1,6 @@
+port: 8092
+discoveryPort: 9993
+
+spring:
+  application:
+    name: demo1-simulator-tlv-output

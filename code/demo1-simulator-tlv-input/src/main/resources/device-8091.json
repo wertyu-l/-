@@ -1,0 +1,26 @@
+{
+  "deviceInfo": {
+    "deviceName": "TLV 输入设备-2",
+    "deviceType": "TLV",
+    "deviceCategory": "INPUT",
+    "model": "DS-D2055NH-A",
+    "serialNumber": "SN-TLV-INPUT-002",
+    "channelCount": 2,
+    "inputChannel1": "HDMI-1",
+    "inputChannel2": "HDMI-2",
+    "inputChannel3": "",
+    "inputChannel4": "",
+    "inputChannel5": "",
+    "maxResolution": "1920x1080",
+    "maxWindows": 0
+  },
+  "deviceCapability": {
+    "maxResolution": "1920x1080",
+    "channelCount": 2,
+    "inputChannel1": "HDMI-1",
+    "inputChannel2": "HDMI-2",
+    "inputChannel3": "",
+    "inputChannel4": "",
+    "inputChannel5": ""
+  }
+}

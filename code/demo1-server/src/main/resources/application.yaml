@@ -2,7 +2,7 @@ server:
   port: 8085
 
 discovery:
-  ports: 9999, 9998, 9997, 9996
+  ports: 9999, 9998, 9997, 9996, 9995, 9994, 9993, 9992
 
 spring:
   application:

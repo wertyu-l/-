@@ -1,8 +1,8 @@
 package com.example.demo.service.impl;
 
 import com.example.demo.common.*;
+import com.example.demo.driver.DeviceDriver;
 import com.example.demo.driver.DeviceEndpoint;
-import com.example.demo.driver.RestDeviceDriver;
 import com.example.demo.mapper.DeviceMapper;
 import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
@@ -39,7 +39,7 @@ class DeviceServiceImplTest {
     private DeviceMapper deviceMapper;
 
     @Mock
-    private RestDeviceDriver restDeviceDriver;
+    private DeviceDriver deviceDriver;
 
     @Mock
     private DeviceDiscoveryService discoveryService;
@@ -148,7 +148,7 @@ class DeviceServiceImplTest {
     @Test
     void addDevice_driverThrowsException_shouldThrowException() {
         when(deviceMapper.findByBaseUrl(BASE_URL)).thenReturn(null);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class)))
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class)))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
@@ -162,8 +162,8 @@ class DeviceServiceImplTest {
     @Test
     void addDevice_infoNull_shouldThrowException() {
         when(deviceMapper.findByBaseUrl(BASE_URL)).thenReturn(null);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(null);
-        when(restDeviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(null);
+        when(deviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
 
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> deviceService.addDevice(BASE_URL));
@@ -178,8 +178,8 @@ class DeviceServiceImplTest {
     @Test
     void addDevice_inputDevice_shouldDetermineCategoryAsINPUT() {
         when(deviceMapper.findByBaseUrl(BASE_URL)).thenReturn(null).thenReturn(devicePageVO);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(inputDeviceInfo);
-        when(restDeviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(inputDeviceInfo);
+        when(deviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
 
         deviceService.addDevice(BASE_URL);
         assertEquals("INPUT", inputDeviceInfo.getDeviceCategory());
@@ -191,8 +191,8 @@ class DeviceServiceImplTest {
     @Test
     void addDevice_outputDevice_shouldDetermineCategoryAsOUTPUT() {
         when(deviceMapper.findByBaseUrl(BASE_URL)).thenReturn(null).thenReturn(devicePageVO);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(outputDeviceInfo);
-        when(restDeviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(outputDeviceInfo);
+        when(deviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
 
         deviceService.addDevice(BASE_URL);
         assertEquals("OUTPUT", outputDeviceInfo.getDeviceCategory());
@@ -208,8 +208,8 @@ class DeviceServiceImplTest {
         noChannel.setDeviceType("REST");
 
         when(deviceMapper.findByBaseUrl(BASE_URL)).thenReturn(null);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(noChannel);
-        when(restDeviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class))).thenReturn(noChannel);
+        when(deviceDriver.getCapability(any(DeviceEndpoint.class))).thenReturn(capability);
 
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> deviceService.addDevice(BASE_URL));
@@ -377,7 +377,7 @@ class DeviceServiceImplTest {
     @Test
     void getDeviceInfo_driverThrowsException_shouldThrowException() {
         when(deviceMapper.findById(1L)).thenReturn(devicePageVO);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class)))
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class)))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
@@ -405,7 +405,7 @@ class DeviceServiceImplTest {
     @Test
     void getDeviceStatus_driverThrowsException_shouldThrowException() {
         when(deviceMapper.findById(1L)).thenReturn(devicePageVO);
-        when(restDeviceDriver.getStatus(any(DeviceEndpoint.class)))
+        when(deviceDriver.getStatus(any(DeviceEndpoint.class)))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
@@ -433,7 +433,7 @@ class DeviceServiceImplTest {
     @Test
     void refreshDevice_driverThrowsException_shouldThrowException() {
         when(deviceMapper.findById(1L)).thenReturn(devicePageVO);
-        when(restDeviceDriver.getInfo(any(DeviceEndpoint.class)))
+        when(deviceDriver.getInfo(any(DeviceEndpoint.class)))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
@@ -481,7 +481,7 @@ class DeviceServiceImplTest {
 
         SimDeviceStatus status = new SimDeviceStatus();
         status.setOnline(true);
-        when(restDeviceDriver.getStatus(any(DeviceEndpoint.class))).thenReturn(status);
+        when(deviceDriver.getStatus(any(DeviceEndpoint.class))).thenReturn(status);
 
         deviceService.updateOnlineStatus();
 
@@ -500,7 +500,7 @@ class DeviceServiceImplTest {
 
         SimDeviceStatus status = new SimDeviceStatus();
         status.setOnline(false);
-        when(restDeviceDriver.getStatus(any(DeviceEndpoint.class))).thenReturn(status);
+        when(deviceDriver.getStatus(any(DeviceEndpoint.class))).thenReturn(status);
 
         deviceService.updateOnlineStatus();
 
@@ -515,7 +515,7 @@ class DeviceServiceImplTest {
     void updateOnlineStatus_driverException_shouldMarkOffline() {
         List<DevicePageVO> devices = List.of(devicePageVO);
         when(deviceMapper.findAll()).thenReturn(devices);
-        when(restDeviceDriver.getStatus(any(DeviceEndpoint.class)))
+        when(deviceDriver.getStatus(any(DeviceEndpoint.class)))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         deviceService.updateOnlineStatus();

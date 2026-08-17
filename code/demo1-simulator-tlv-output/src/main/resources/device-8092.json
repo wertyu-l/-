@@ -1,0 +1,30 @@
+{
+  "deviceInfo": {
+    "deviceName": "TLV 输出设备-1",
+    "deviceType": "TLV",
+    "deviceCategory": "OUTPUT",
+    "model": "DS-D2055NH-A",
+    "serialNumber": "SN-TLV-OUTPUT-001",
+    "channelCount": 2,
+    "outputChannel1": "OUT-1",
+    "outputChannel2": "OUT-2",
+    "outputChannel3": "",
+    "outputChannel4": "",
+    "outputChannel5": "",
+    "maxResolution": "1920x1080",
+    "maxWindows": 4
+  },
+  "deviceCapability": {
+    "maxWindows": 4,
+    "supportMove": true,
+    "supportResize": true,
+    "supportOverlay": true,
+    "maxResolution": "1920x1080",
+    "channelCount": 2,
+    "outputChannel1": "OUT-1",
+    "outputChannel2": "OUT-2",
+    "outputChannel3": "",
+    "outputChannel4": "",
+    "outputChannel5": ""
+  }
+}

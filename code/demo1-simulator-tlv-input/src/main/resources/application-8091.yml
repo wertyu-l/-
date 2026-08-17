@@ -1,0 +1,6 @@
+port: 8091
+discoveryPort: 9994
+
+spring:
+  application:
+    name: demo1-simulator-tlv-input

@@ -23,6 +23,8 @@
         <module>demo1-server</module>
         <module>demo1-simulator-input</module>
         <module>demo1-simulator-output</module>
+        <module>demo1-simulator-tlv-input</module>
+        <module>demo1-simulator-tlv-output</module>
     </modules>
 
     <properties>

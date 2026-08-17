@@ -1,8 +1,8 @@
 package com.example.demo.service.impl;
 
 import com.example.demo.common.*;
+import com.example.demo.driver.DeviceDriver;
 import com.example.demo.driver.DeviceEndpoint;
-import com.example.demo.driver.RestDeviceDriver;
 import com.example.demo.mapper.DeviceMapper;
 import com.example.demo.model.SimDeviceCapability;
 import com.example.demo.model.SimDeviceInfo;
@@ -35,7 +35,7 @@ public class DeviceServiceImpl implements DeviceService {
     private DeviceMapper deviceMapper;
 
     @Autowired
-    private RestDeviceDriver restDeviceDriver;
+    private DeviceDriver deviceDriver;
 
     @Autowired
     private DeviceDiscoveryService discoveryService;
@@ -59,8 +59,8 @@ public class DeviceServiceImpl implements DeviceService {
         if (!StringUtils.hasText(baseUrl)) {
             throw new RuntimeException("baseUrl不能为空");
         }
-        // 只允许 IP+端口 格式
-        if (!baseUrl.matches("^https?://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+$")) {
+        // 只允许 IP+端口 格式（REST: http/https，TLV: udp）
+        if (!baseUrl.matches("^(https?|udp)://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+$")) {
             throw new RuntimeException("请使用 IP+端口 格式");
         }
 
@@ -72,14 +72,14 @@ public class DeviceServiceImpl implements DeviceService {
 
         // 3. 构建 DeviceEndpoint，连接模拟设备拉取设备信息与能力
         DeviceEndpoint endpoint = new DeviceEndpoint();
-        endpoint.setDeviceType("REST");
+        endpoint.setDeviceType(baseUrl.startsWith("udp://") ? "TLV" : "REST");
         endpoint.setBaseUrl(baseUrl);
 
         SimDeviceInfo info;
         SimDeviceCapability capability;
         try {
-            info = restDeviceDriver.getInfo(endpoint);
-            capability = restDeviceDriver.getCapability(endpoint);
+            info = deviceDriver.getInfo(endpoint);
+            capability = deviceDriver.getCapability(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + baseUrl + "，请检查设备是否在线");
         }
@@ -174,8 +174,8 @@ public class DeviceServiceImpl implements DeviceService {
         SimDeviceInfo info;
         SimDeviceCapability capability;
         try {
-            info = restDeviceDriver.getInfo(endpoint);
-            capability = restDeviceDriver.getCapability(endpoint);
+            info = deviceDriver.getInfo(endpoint);
+            capability = deviceDriver.getCapability(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
         }
@@ -209,7 +209,7 @@ public class DeviceServiceImpl implements DeviceService {
         for (DevicePageVO device : allDevices) {
             DeviceEndpoint endpoint = buildEndpoint(device);
             try {
-                SimDeviceStatus status = restDeviceDriver.getStatus(endpoint);
+                SimDeviceStatus status = deviceDriver.getStatus(endpoint);
                 if (status != null && status.isOnline()) {
                     if (device.getOnline() == null || device.getOnline() == 0) {
                         windowService.markPendingForDevice(device);
@@ -262,7 +262,7 @@ public class DeviceServiceImpl implements DeviceService {
         DeviceEndpoint endpoint = buildEndpoint(device);
         SimDeviceInfo info;
         try {
-            info = restDeviceDriver.getInfo(endpoint);
+            info = deviceDriver.getInfo(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
         }
@@ -289,7 +289,7 @@ public class DeviceServiceImpl implements DeviceService {
         DeviceEndpoint endpoint = buildEndpoint(device);
         SimDeviceStatus status;
         try {
-            status = restDeviceDriver.getStatus(endpoint);
+            status = deviceDriver.getStatus(endpoint);
         } catch (Exception e) {
             throw new RuntimeException("无法连接模拟设备: " + device.getBaseUrl() + "，请检查设备是否在线");
         }
@@ -350,8 +350,8 @@ public class DeviceServiceImpl implements DeviceService {
     /**
      * 心跳检测定时任务（每 30 秒）
      * <p>
-     * 遍历所有设备，通过 {@link RestDeviceDriver#getStatus(DeviceEndpoint)}
-     * 请求模拟设备状态接口（connect/read 超时各 3 秒），根据结果更新数据库 online 字段。
+     * 遍历所有设备，通过 {@link DeviceDriver#getStatus(DeviceEndpoint)}
+     * 请求模拟设备状态接口（REST 超时 3 秒 / TLV 超时 3 秒），根据结果更新数据库 online 字段。
      */
     @Scheduled(fixedRate = 30000)
     public void heartbeat() {

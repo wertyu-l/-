@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TLV 输出设备模拟器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
+.header{background:linear-gradient(135deg,#00a86b,#00875a);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:20px;font-weight:600}
+.header .badge{background:rgba(255,255,255,.2);padding:4px 12px;border-radius:12px;font-size:13px}
+.header-right{display:flex;align-items:center;gap:12px}
+.refresh-indicator{font-size:12px;opacity:.8}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.panel{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:20px;overflow:hidden}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eee;background:#fafbfc}
+.panel-header h2{font-size:16px;font-weight:600}
+.panel-body{padding:20px}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;transition:all .2s}
+.btn-outline{background:#fff;color:#00a86b;border:1px solid #00a86b}
+.btn-outline:hover{background:#e6f7f0}
+.btn-sm{padding:4px 10px;font-size:12px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.info-item{display:flex;flex-direction:column;padding:10px 14px;background:#f8f9fa;border-radius:6px}
+.info-label{font-size:12px;color:#888;margin-bottom:4px}
+.info-value{font-size:14px;font-weight:500;word-break:break-all}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-dot.online{background:#0f9d58}
+.status-dot.offline{background:#d93025}
+.capability-flags{display:flex;gap:16px;flex-wrap:wrap}
+.cap-flag{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#f8f9fa;border-radius:6px;font-size:13px}
+.cap-flag .icon{font-size:16px}
+.cap-flag.enabled{color:#0f9d58}
+.cap-flag.disabled{color:#999}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 12px;background:#f8f9fa;font-size:12px;color:#888;border-bottom:2px solid #eee}
+td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
+.empty-state{text-align:center;padding:40px 20px;color:#999}
+.toast{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:6px;color:#fff;font-size:14px;z-index:999;animation:slideIn .3s ease}
+.toast-success{background:#0f9d58}
+.toast-error{background:#d93025}
+@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1 id="headerTitle">加载中...</h1>
+  <div class="header-right">
+    <span class="refresh-indicator" id="refreshIndicator"></span>
+    <span class="badge" id="headerBadge">加载中...</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>设备信息</h2>
+      <button class="btn btn-outline btn-sm" onclick="loadAll()">刷新</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-grid" id="deviceInfo"><div class="empty-state">加载中...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>设备状态</h2>
+    </div>
+    <div class="panel-body">
+      <div class="info-grid" id="deviceStatus"><div class="empty-state">加载中...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>设备能力</h2>
+    </div>
+    <div class="panel-body">
+      <div class="info-grid" id="capability"><div class="empty-state">加载中...</div></div>
+      <div class="capability-flags" id="capFlags" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>窗口列表（子窗口）</h2>
+    </div>
+    <div class="panel-body">
+      <table>
+        <thead>
+          <tr>
+            <th>窗口ID</th>
+            <th>通道名</th>
+            <th>坐标 (x,y)</th>
+            <th>尺寸 (w×h)</th>
+            <th>信号类型</th>
+            <th>信号地址</th>
+            <th>创建时间</th>
+          </tr>
+        </thead>
+        <tbody id="windowTableBody">
+          <tr><td colspan="7" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+var API_BASE = '';
+var AUTO_REFRESH_INTERVAL = 5000;
+var _refreshTimer = null;
+var _countdown = 0;
+
+function api(path) {
+  return fetch(API_BASE + path).then(function(r) { return r.json(); });
+}
+
+function toast(msg, type) {
+  type = type || 'success';
+  var el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(function() { el.remove(); }, 3000);
+}
+
+function startAutoRefresh() {
+  _countdown = AUTO_REFRESH_INTERVAL / 1000;
+  updateRefreshIndicator();
+  _refreshTimer = setInterval(function() {
+    _countdown--;
+    if (_countdown <= 0) {
+      loadAll();
+      _countdown = AUTO_REFRESH_INTERVAL / 1000;
+    }
+    updateRefreshIndicator();
+  }, 1000);
+}
+
+function updateRefreshIndicator() {
+  document.getElementById('refreshIndicator').textContent = '自动刷新 ' + _countdown + 's';
+}
+
+function loadAll() {
+  _countdown = AUTO_REFRESH_INTERVAL / 1000;
+  updateRefreshIndicator();
+  loadDeviceInfo();
+}
+
+function loadDeviceInfo() {
+  api('/simulator/device/info').then(function(res) {
+    if (res.code !== 1) { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+    var d = res.data;
+    document.getElementById('headerTitle').textContent = d.deviceName;
+    document.getElementById('headerBadge').textContent = '输出设备 · 端口 ' + (location.port || '');
+    var chs = getOutputChannels(d).filter(Boolean);
+    document.getElementById('deviceInfo').innerHTML =
+      it('设备名称', d.deviceName) + it('设备类型', d.deviceType) +
+      it('设备类别', '输出设备（OUTPUT）') + it('型号', d.model) + it('序列号', d.serialNumber) +
+      it('输出通道', chs.length ? chs.join(', ') : '无') +
+      it('最大分辨率', d.maxResolution) + it('最大窗口数', d.maxWindows);
+    loadStatus();
+    loadCapability();
+    loadWindows();
+  }).catch(function() { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; });
+}
+
+function getOutputChannels(d) {
+  var chs = [];
+  for (var i = 1; i <= 5; i++) {
+    var ch = d['outputChannel' + i];
+    if (ch) chs.push(ch);
+  }
+  return chs;
+}
+
+function it(label, value) {
+  return '<div class="info-item"><span class="info-label">' + esc(label) + '</span><span class="info-value">' + esc(value || '-') + '</span></div>';
+}
+
+function loadStatus() {
+  api('/simulator/device/status').then(function(res) {
+    if (res.code !== 1) { document.getElementById('deviceStatus').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+    var s = res.data;
+    var online = s.online !== false;
+    document.getElementById('deviceStatus').innerHTML =
+      '<div class="info-item"><span class="info-label">运行状态</span><span class="info-value">' +
+      '<span class="status-dot ' + (online ? 'online' : 'offline') + '"></span>' + (online ? '在线' : '离线') + '</span></div>' +
+      it('当前窗口数', s.windowCount) + it('启动时间', s.uptime);
+  }).catch(function() { document.getElementById('deviceStatus').innerHTML = '<div class="empty-state">加载失败</div>'; });
+}
+
+function loadCapability() {
+  api('/simulator/device/capability').then(function(res) {
+    if (res.code !== 1) { document.getElementById('capability').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+    var c = res.data;
+    var chs = [];
+    for (var i = 1; i <= 5; i++) { var ch = c['outputChannel' + i]; if (ch) chs.push(ch); }
+    document.getElementById('capability').innerHTML =
+      it('最大窗口数', c.maxWindows) + it('最大分辨率', c.maxResolution) +
+      it('通道数', c.channelCount) + it('输出通道', chs.length ? chs.join(', ') : '无');
+    renderCapFlags(c);
+  }).catch(function() { document.getElementById('capability').innerHTML = '<div class="empty-state">加载失败</div>'; });
+}
+
+function renderCapFlags(c) {
+  var flags = [
+    { key: 'supportMove', label: '窗口移动', icon: '↔' },
+    { key: 'supportResize', label: '窗口缩放', icon: '⤡' },
+    { key: 'supportOverlay', label: '窗口叠加', icon: '⊞' }
+  ];
+  var html = '';
+  flags.forEach(function(f) {
+    var enabled = c[f.key] === true;
+    html += '<div class="cap-flag ' + (enabled ? 'enabled' : 'disabled') + '">' +
+      '<span class="icon">' + (enabled ? '✓' : '✗') + '</span>' +
+      '<span>' + f.label + '：' + (enabled ? '支持' : '不支持') + '</span>' +
+      '</div>';
+  });
+  document.getElementById('capFlags').innerHTML = html;
+}
+
+function loadWindows() {
+  api('/simulator/device/windows').then(function(res) {
+    if (res.code !== 1) { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">加载失败</td></tr>'; return; }
+    var list = res.data || [];
+    if (list.length === 0) { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">暂无窗口（等待管控系统下发）</td></tr>'; return; }
+    var html = '';
+    list.forEach(function(w) {
+      html += '<tr>' +
+        '<td style="font-family:monospace;font-size:12px">' + esc(w.windowId) + '</td>' +
+        '<td>' + esc(w.channelName) + '</td>' +
+        '<td>(' + (w.x||0) + ', ' + (w.y||0) + ')</td>' +
+        '<td>' + (w.width||1920) + '×' + (w.height||1080) + '</td>' +
+        '<td>' + esc(w.sourceType || '-') + '</td>' +
+        '<td style="font-family:monospace;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.sourceUrl || '-') + '</td>' +
+        '<td style="font-size:12px">' + esc(w.createTime || '-') + '</td>' +
+      '</tr>';
+    });
+    document.getElementById('windowTableBody').innerHTML = html;
+  }).catch(function() { document.getElementById('windowTableBody').innerHTML = '<tr><td colspan="7" class="empty-state">加载失败</td></tr>'; });
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadAll();
+startAutoRefresh();
+</script>
+
+</body>
+</html>

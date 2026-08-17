@@ -19,10 +19,10 @@ TLV 模拟设备是 V4 阶段新增的**第二类异构设备**，通过 UDP + T
 | 选型 | 方案 | 说明 |
 |------|------|------|
 | 框架 | Spring Boot 空壳模式 | 只用 IoC 容器管理 Bean，不启动 Tomcat/SpringMVC |
-| 启动 | SpringApplication.run() + WebApplicationType.NONE | main 方法启动，与 REST 模拟器形式统一 |
+| 启动 | SpringApplication.run() + WebApplicationType.NONE + spring.profiles.active | 通过 application-{port}.yml 指定端口|
 | 通信 | UDP + TLV 二进制协议 | 与管控系统通过 TLV 帧通信 |
 | 前端 | JDK 内置 HttpServer | 零依赖，提供静态页面 + JSON API |
-| 配置 | JSON 文件 | 启动时从 resources 加载，不依赖数据库 |
+| 配置 | YAML（端口）+ JSON（设备数据） | 端口通过 application-{port}.yml 注入，设备数据从 JSON 文件加载 |
 
 > Spring Boot 空壳模式：SpringApplication 设置 setWebApplicationType(WebApplicationType.NONE)，仅启动 IoC 容器，不启动内嵌 Web 服务器。所有 Bean（如 TlvServer、DiscoveryListener、FrontendServer）通过 @Component + @PostConstruct 自动装配和启动。
 
@@ -32,7 +32,7 @@ TLV 模拟设备是 V4 阶段新增的**第二类异构设备**，通过 UDP + T
 
 ### 2.1 文件结构
 
-TLV 模拟设备是独立 Java 程序，共有 2 个模拟器模块，通过 `main` 方法启动，命令行参数传入配置文件和端口号，每个进程代表一台设备。数据模型与管控系统共享 `demo1-common`，编解码器也放在 `demo1-common` 中供模拟器和管控系统共用。
+TLV 模拟设备是独立 Java 程序，共有 2 个模拟器模块，通过 `main` 方法启动，使用 `--spring.profiles.active={port}` 指定端口号，设备数据从 JSON 配置文件加载。每个进程代表一台设备。数据模型与管控系统共享 `demo1-common`，编解码器也放在 `demo1-common` 中供模拟器和管控系统共用。
 
 **demo1-common（V4 新增编解码器）**
 
@@ -53,11 +53,13 @@ demo1-common/src/main/java/com/example/demo/codec/   ←新增
 ```
 demo1-simulator-tlv-input/
 └── src/main/resources/
+    ├── application-8090.yml            ← 端口配置（port=8090, discoveryPort=9995）
+    ├── application-8091.yml            ← 端口配置（port=8091, discoveryPort=9994）
     ├── device-8090.json                ← TLV 输入设备-1 配置（1个输入通道 HDMI-1）
     └── device-8091.json                ← TLV 输入设备-2 配置（2个输入通道 HDMI-1, HDMI-2）
 
 └── src/main/java/com/example/demo/simulator/tlv/input/
-    ├── SimulatorApplication.java       ← 程序入口（main 方法，读配置，启动 TlvServer）
+    ├── SimulatorApplication.java       ← 程序入口（Spring Boot 启动，@Value 注入端口，加载 JSON 配置）
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
@@ -72,19 +74,21 @@ demo1-simulator-tlv-input/
     └── core/
         ├── SimDeviceManager.java       ← 设备管理核心（含通道-窗口占用映射）
         └── DeviceConfig.java           ← 设备配置加载（从 JSON 文件读取）
+└── pom.xml
 ```
-├── pom.xml
 
 **demo1-simulator-tlv-output**（输出设备模块）
 
 ```
 demo1-simulator-tlv-output/
 └── src/main/resources/
+    ├── application-8092.yml            ← 端口配置（port=8092, discoveryPort=9993）
+    ├── application-8093.yml            ← 端口配置（port=8093, discoveryPort=9992）
     ├── device-8092.json                ← TLV 输出设备-1 配置（2个输出通道，maxWindows=4）
     └── device-8093.json                ← TLV 输出设备-2 配置（3个输出通道，maxWindows=6）
 
 └── src/main/java/com/example/demo/simulator/tlv/output/
-    ├── SimulatorApplication.java       ← 程序入口（main 方法，读配置，启动 TlvServer）
+    ├── SimulatorApplication.java       ← 程序入口（Spring Boot 启动，@Value 注入端口，加载 JSON 配置）
     ├── server/
     │   ├── TlvServer.java              ← UDP 服务端（监听端口，请求分发）
     │   └── DiscoveryListener.java      ← UDP 设备发现监听
@@ -101,8 +105,8 @@ demo1-simulator-tlv-output/
     └── core/
         ├── SimDeviceManager.java       ← 设备管理核心（窗口存内存）
         └── DeviceConfig.java           ← 设备配置加载（从 JSON 文件读取）
+└── pom.xml
 ```
-├── pom.xml
 
 > 添加设备只需新增对应的 JSON 配置文件，启动新进程即可。
 
@@ -115,23 +119,6 @@ demo1-server/src/main/java/com/example/demo/driver/
     └── TlvDeviceDriver.java       (新增 - UDP + TLV 驱动)
 ```
 ---
-### 2.2 依赖清单
-
-**demo1-simulator-tlv-input / demo1-simulator-tlv-output**（pom.xml）：
-
-```xml
-<dependencies>
-    <dependency>
-        <groupId>com.example</groupId>
-        <artifactId>demo1-common</artifactId>
-        <version>${project.version}</version>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter</artifactId>
-    </dependency>
-</dependencies>
-```
 
 > spring-boot-starter 仅引入 Spring IoC 核心依赖，不包含 spring-boot-starter-web（无 Tomcat/SpringMVC）。零额外依赖，JDK HttpServer 为 JDK 内置。
 

@@ -359,6 +359,7 @@ public class SimDeviceCapability {
 
 ```java
 public class TlvFrame {
+    private int seq;                           // 序列号（2 字节，大端序），请求-响应匹配
     private int type;                          // 命令类型（2 字节，大端序）
     private int length;                        // Value 字节长度（2 字节，大端序）
     private byte[] value;                      // 嵌套 TLV 字段的原始字节序列
@@ -366,6 +367,7 @@ public class TlvFrame {
     private List<Map<Byte, byte[]>> listItems; // 列表场景：多个 TLV 字段组（decode 时填充）
 }
 ```
+
 
 ### 4.6 TlvTag — 字段 Tag 常量
 
@@ -384,35 +386,35 @@ public class TlvFrame {
 ```java
 public class TlvTag {
     // ===== 字符串类型 (0x01-0x1F) =====
-    public static final byte TAG_WINDOW_ID      = 0x01;
-    public static final byte TAG_CHANNEL_NAME   = 0x02;
-    public static final byte TAG_SOURCE_TYPE    = 0x03;
-    public static final byte TAG_SOURCE_URL     = 0x04;
-    public static final byte TAG_DEVICE_ID      = 0x05;
-    public static final byte TAG_DEVICE_NAME    = 0x06;
-    public static final byte TAG_DEVICE_MODEL   = 0x07;
-    public static final byte TAG_FIRMWARE_VER   = 0x08;
-    public static final byte TAG_UPTIME         = 0x09;
-    public static final byte TAG_MAX_RESOLUTION = 0x0A;
-    public static final byte TAG_CREATE_TIME    = 0x0B;
-    public static final byte TAG_ERROR_MSG      = 0x0C;
+    public static final byte TAG_WINDOW_ID      = 0x01;  // 窗口唯一标识
+    public static final byte TAG_CHANNEL_NAME   = 0x02;  // 通道名称
+    public static final byte TAG_SOURCE_TYPE    = 0x03;  // 信号源类型
+    public static final byte TAG_SOURCE_URL     = 0x04;  // 信号源地址
+    public static final byte TAG_DEVICE_ID      = 0x05;  // 设备唯一标识
+    public static final byte TAG_DEVICE_NAME    = 0x06;  // 设备名称
+    public static final byte TAG_DEVICE_MODEL   = 0x07;  // 设备型号
+    public static final byte TAG_FIRMWARE_VER   = 0x08;  // 固件版本
+    public static final byte TAG_UPTIME         = 0x09;  // 运行时长
+    public static final byte TAG_MAX_RESOLUTION = 0x0A;  // 最大分辨率
+    public static final byte TAG_CREATE_TIME    = 0x0B;  // 创建时间
+    public static final byte TAG_ERROR_MSG      = 0x0C;  // 错误信息
     public static final byte TAG_CHANNEL_URL    = 0x0E;  // 通道播放地址
 
     // ===== 整数类型 int32 (0x20-0x3F) =====
-    public static final byte TAG_X              = 0x20;
-    public static final byte TAG_Y              = 0x21;
-    public static final byte TAG_WIDTH          = 0x22;
-    public static final byte TAG_HEIGHT         = 0x23;
-    public static final byte TAG_MAX_WINDOWS    = 0x24;
-    public static final byte TAG_CHANNEL_COUNT  = 0x25;
-    public static final byte TAG_WINDOW_COUNT   = 0x26;
-    public static final byte TAG_RESULT_CODE    = 0x27;
+    public static final byte TAG_X              = 0x20;  // 窗口X坐标
+    public static final byte TAG_Y              = 0x21;  // 窗口Y坐标
+    public static final byte TAG_WIDTH          = 0x22;  // 窗口宽度
+    public static final byte TAG_HEIGHT         = 0x23;  // 窗口高度
+    public static final byte TAG_MAX_WINDOWS    = 0x24;  // 最大窗口数
+    public static final byte TAG_CHANNEL_COUNT  = 0x25;  // 通道数量
+    public static final byte TAG_WINDOW_COUNT   = 0x26;  // 当前窗口数
+    public static final byte TAG_RESULT_CODE    = 0x27;  // 操作结果码（1=成功, 0=失败）
 
     // ===== 布尔类型 (0x40-0x5F) =====
-    public static final byte TAG_ONLINE         = 0x40;
-    public static final byte TAG_SUPPORT_MOVE   = 0x41;
-    public static final byte TAG_SUPPORT_RESIZE = 0x42;
-    public static final byte TAG_SUPPORT_OVERLAY= 0x43;
+    public static final byte TAG_ONLINE         = 0x40;  // 是否在线
+    public static final byte TAG_SUPPORT_MOVE   = 0x41;  // 是否支持移动
+    public static final byte TAG_SUPPORT_RESIZE = 0x42;  // 是否支持缩放
+    public static final byte TAG_SUPPORT_OVERLAY= 0x43;  // 是否支持叠加
 }
 ```
 
@@ -422,25 +424,35 @@ public class TlvTag {
 
 ```java
 public class TlvCommand {
-    public static final int CMD_GET_INFO       = 0x0001;
-    public static final int CMD_GET_STATUS     = 0x0002;
-    public static final int CMD_GET_CAPABILITY = 0x0003;
-    public static final int CMD_CREATE_WINDOW  = 0x0010;
-    public static final int CMD_CLOSE_WINDOW   = 0x0012;
-    public static final int CMD_GET_WINDOWS    = 0x0011;
-    public static final int CMD_UPDATE_WINDOW  = 0x0013;
-    public static final int CMD_SET_CHANNEL_URL  = 0x0020;
-    public static final int CMD_GET_CHANNEL_URLS = 0x0021;
-    public static final int CMD_NOTIFY_WINDOW  = 0x0030;
-    public static final int RESP_INFO          = 0x8001;
-    public static final int RESP_STATUS        = 0x8002;
-    public static final int RESP_CAPABILITY    = 0x8003;
-    public static final int RESP_WINDOW        = 0x8010;
-    public static final int RESP_WINDOWS       = 0x8011;
-    public static final int RESP_CHANNEL_URLS   = 0x8020;
-    public static final int RESP_ERROR         = 0xFFFF;
+    // ===== 查询命令 (0x0001-0x000F) =====
+    public static final int CMD_GET_INFO       = 0x0001;  // 查询设备基本信息
+    public static final int CMD_GET_STATUS     = 0x0002;  // 查询设备运行状态
+    public static final int CMD_GET_CAPABILITY = 0x0003;  // 查询设备能力
+    // ===== 窗口操作命令 (0x0010-0x001F) =====
+    public static final int CMD_CREATE_WINDOW  = 0x0010;  // 创建窗口
+    public static final int CMD_CLOSE_WINDOW   = 0x0012;  // 关闭窗口
+    public static final int CMD_GET_WINDOWS    = 0x0011;  // 查询窗口列表
+    public static final int CMD_UPDATE_WINDOW  = 0x0013;  // 更新窗口
+    // ===== 通道地址命令 (0x0020-0x002F) =====
+    public static final int CMD_SET_CHANNEL_URL  = 0x0020;  // 设置通道播放地址
+    public static final int CMD_GET_CHANNEL_URLS = 0x0021;  // 查询所有通道播放地址
+    // ===== 窗口通知命令 (0x0030-0x003F) =====
+    public static final int CMD_NOTIFY_WINDOW  = 0x0030;  // 窗口信息反馈（输入设备用）
+
+    // ===== 响应命令 (0x8001-0xFFFF) =====
+    public static final int RESP_INFO          = 0x8001;  // 设备信息响应
+    public static final int RESP_STATUS        = 0x8002;  // 设备状态响应
+    public static final int RESP_CAPABILITY    = 0x8003;  // 设备能力响应
+    public static final int RESP_WINDOW        = 0x8010;  // 通用成功响应
+    public static final int RESP_WINDOWS       = 0x8011;  // 窗口列表响应
+    public static final int RESP_CHANNEL_URLS   = 0x8020;  // 通道地址响应
+    public static final int RESP_ERROR         = 0xFFFF;  // 错误响应
 }
 ```
+
+---
+
+
 
 ---
 
@@ -977,88 +989,9 @@ DeviceDriver.getInfo(endpoint)
 
 > 配置文件格式详见 3.1 节，每台设备使用独立的 JSON 文件，以端口号命名（如 device-8090.json）。
 
-### 7.3 启动方式
+### 7.3 TLV 协议帧格式
 
-**一进程一设备**，每个设备对应一个 JSON 配置文件，文件名按端口号命名，如 `device-8090.json`。`main` 方法接收端口号作为参数，启动 Spring Boot 空壳容器。
-
-**SimulatorApplication.java：**
-
-```java
-@SpringBootApplication
-public class SimulatorApplication {
-    public static void main(String[] args) {
-        int port = Integer.parseInt(args[0]);  // 端口号，如 8090
-
-        SpringApplication app = new SpringApplication(SimulatorApplication.class);
-        app.setWebApplicationType(WebApplicationType.NONE);  // 不启动 Tomcat/SpringMVC
-        app.setDefaultProperties(Collections.singletonMap("server.port", port));
-        app.run();
-
-        // TlvServer、DiscoveryListener、FrontendServer 通过 @Component + @PostConstruct 自动启动
-    }
-}
-```
-
-> `WebApplicationType.NONE` 仅启动 IoC 容器，不启动内嵌 Web 服务器。`TlvServer`（UDP）、`DiscoveryListener`（UDP）、`FrontendServer`（JDK HttpServer）均通过 `@Component` + `@PostConstruct` 自动装配和启动。
-
-**IDEA 运行配置：** 创建 4 个 Run Configuration，每个只填端口号，启动即为一台设备，可单独启停：
-
-```
-IDEA Run Configurations:
-  ├── TLV-Input-8090    → Program arguments: 8090
-  ├── TLV-Input-8091    → Program arguments: 8091
-  ├── TLV-Output-8092   → Program arguments: 8092
-  └── TLV-Output-8093   → Program arguments: 8093
-```
-
-> **部署运行：** 也支持命令行方式 `java -jar demo1-simulator-tlv-input.jar 8090`，本质相同。
-
-### 7.3.1 TlvServer 设计
-
-`TlvServer` 是模拟设备的核心，负责 UDP 监听和命令分发。编解码器（`TlvEncoder`、`TlvDecoder`、`TlvFieldCodec`、`Crc16`）已在 `demo1-common` 中实现，`TlvServer` 只需调用即可。
-
-#### 核心职责
-
-- 监听指定 UDP 端口，接收管控系统下发的 TLV 命令帧
-- 校验 Magic 和 CRC16，过滤非法/损坏数据包
-- 根据命令类型（Type 字段）将请求分发到对应的命令处理器（CmdHandler）
-- 将处理器返回的响应字节序列通过 UDP 原路发回（Seq 原样回填）
-
-#### 核心组件
-
-| 组件 | 说明 |
-|------|------|
-| **TlvServer** | UDP 服务器，持有 `DeviceConfig` 和 `handlerMap`（命令号 → 处理器映射），提供 `registerHandler()` 注册处理器、`start()` 启动死循环监听 |
-| **CmdHandler** | 命令处理器接口，定义 `handle(byte[] value)` 方法，接收内层 Value 字节序列，返回响应字节序列 |
-| **具体 Handler** | 每个命令对应一个实现类（如 `GetInfoHandler`、`CreateWindowHandler`），内部完成：解码请求 → 业务处理 → 编码响应 |
-
-#### 请求处理流程
-
-```
-UDP 收包 → TlvDecoder 解码外层帧
-    → 校验 Magic（不匹配则丢弃）
-    → 校验 CRC16（不匹配则丢弃）
-    → 提取 Seq、Type、Value
-    → handlerMap 根据 Type 查找对应 CmdHandler
-    → CmdHandler.handle(Value) 处理请求
-        → 内部：TlvFieldCodec 解码 Value 中各字段
-        → 业务逻辑处理
-        → TlvFieldCodec 编码响应字段 → TlvEncoder.encode(seq, frame) 编码外层帧（含 Magic、CRC16，Seq 原样回填）
-    → UDP 发送响应帧
-```
-
-#### 设计要点
-
-- `main` 方法负责读取配置、创建 Handler、注册到 `TlvServer`；`TlvServer.start()` 启动死循环监听 UDP 端口
-- 收到数据后先校验 Magic 和 CRC16，校验失败静默丢弃
-- 通过后根据命令号从 `handlerMap` 取出对应 Handler 执行
-- Handler 内部完成解码 → 业务处理 → 编码 → 返回响应
-- 响应帧 Seq 原样回填请求帧的 Seq，实现请求-响应匹配
-- 整个链路无 Spring Boot 依赖，纯 Java 标准库实现
-- 新增命令只需新增一个 CmdHandler 实现类并注册即可，无需修改 TlvServer 核心代码
-### 7.4 TLV 协议帧格式
-
-#### 7.4.1 外层帧（命令级）
+#### 7.3.1 外层帧（命令级）
 
 ```
 +---------+---------+---------+---------+-------------------+---------+
@@ -1077,7 +1010,7 @@ UDP 收包 → TlvDecoder 解码外层帧
 | Length | 2 | Value 部分的总字节长度（大端序） |
 | Value | N | 内层 TLV 字段序列 |
 | CRC16 | 2 | CRC-16/XMODEM 校验（多项式 `0x1021`），覆盖范围：Magic + Seq + Type + Length + Value，大端序。校验失败静默丢弃 |
-#### 7.4.2 内层字段（字段级）
+#### 7.3.2 内层字段（字段级）
 
 Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
 
@@ -1109,7 +1042,7 @@ Value 由多个 TLV 条目组成，每个条目对应一个业务字段：
 
 > 外层用 2+2+2+2 字节头（Magic+Seq+Type+Length）+ 2 字节尾（CRC16），内层用 1+1 字节头（Tag+Length）——Magic 用于帧识别，Seq 用于请求-响应匹配，CRC16 保证数据完整性；外层命令空间大、Value 可能超过 255 字节；内层单字段通常不超过 255 字节，1 字节头节省开销。
 
-### 7.5 编解码器设计
+### 7.4 编解码器设计
 
 位于 `demo1-common/src/main/java/com/example/demo/codec/`。
 
@@ -1221,7 +1154,7 @@ public class TlvFieldCodec {
 ```
 
 > **使用方：** 管控侧 `TlvDeviceDriver` 生成 Seq → 调 `TlvFieldCodec.encodeFields()` 编请求字段 → `TlvEncoder.encode(seq, frame)` 编外层帧（含 Magic、CRC16）；模拟器侧 `TlvServer` 调 `TlvDecoder.decode()` 解外层帧（校验 Magic、CRC16） → `TlvFieldCodec.decodeFields()` 解字段。响应方向同理，Seq 原样回填。
-### 7.6 超时与重试
+### 7.5 超时与重试
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
@@ -1231,7 +1164,7 @@ public class TlvFieldCodec {
 
 > UDP 丢包是正常现象，2 次重试可覆盖大部分网络抖动场景。管控系统已有的 `retryPendingWindows` 机制会兜底处理最终失败的情况。
 
-### 7.7 统一返回格式
+### 7.6 统一返回格式
 
 所有响应 Value 统一包含 `code` 字段，`code=1` 表示成功，`code=0` 表示失败。失败时附带 `TAG_ERROR_MSG` 错误信息。
 
@@ -1252,6 +1185,18 @@ TAG_ERROR_MSG(0x0C) = 错误描述  ← string
 > 不再使用 JSON 的 `Result<T>` 封装结构，`code` 和 `msg` 作为普通 TLV 字段扁平化编码在 Value 中。
 
 ---
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

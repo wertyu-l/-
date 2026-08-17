@@ -396,8 +396,7 @@ public class TlvTag {
     public static final byte TAG_MAX_RESOLUTION = 0x0A;
     public static final byte TAG_CREATE_TIME    = 0x0B;
     public static final byte TAG_ERROR_MSG      = 0x0C;
-    public static final byte TAG_CHANNEL_KEY    = 0x0D;  // 通道名-URL 映射的 key
-    public static final byte TAG_CHANNEL_URL    = 0x0E;  // 通道名-URL 映射的 value
+    public static final byte TAG_CHANNEL_URL    = 0x0E;  // 通道播放地址
 
     // ===== 整数类型 int32 (0x20-0x3F) =====
     public static final byte TAG_X              = 0x20;
@@ -462,17 +461,17 @@ TLV 模拟设备通过 UDP 通信，默认端口 **8090**（输入）/ **8092**�
 | CMD_GET_CAPABILITY | 0x0003 | 管控→设备 | 查询设备能力 |  全部  | 空（Length=0） |
 | CMD_CREATE_WINDOW | 0x0010 | 管控→设备 | 创建窗口 |  输出  | TAG_WINDOW_ID + TAG_CHANNEL_NAME + TAG_X + TAG_Y + TAG_WIDTH + TAG_HEIGHT |
 | CMD_CLOSE_WINDOW | 0x0012 | 管控→设备 | 关闭窗口 |  输出  | TAG_WINDOW_ID |
-| CMD_UPDATE_WINDOW | 0x0013 | 管控→设备 | 更新窗口 |  输出  | 见 5.2.9 |
+| CMD_UPDATE_WINDOW | 0x0013 | 管控→设备 | 更新窗口 |  输出  | 见 5.2.6 |
 | CMD_GET_WINDOWS | 0x0011 | 管控→设备 | 查询所有窗口 |  输出  | 空（Length=0） |
-| CMD_SET_CHANNEL_URL | 0x0020 | 管控→设备 | 设置通道播放地址 |  输入  | TAG_CHANNEL_KEY + TAG_CHANNEL_URL |
+| CMD_SET_CHANNEL_URL | 0x0020 | 管控→设备 | 设置通道播放地址 |  输入  | TAG_CHANNEL_NAME + TAG_CHANNEL_URL |
 | CMD_GET_CHANNEL_URLS | 0x0021 | 管控→设备 | 获取所有通道播放地址 |  输入  | 空（Length=0） |
-| CMD_NOTIFY_WINDOW | 0x0030 | 管控→设备 | 窗口信息反馈 |  输入  | 见 5.2.10 |
+| CMD_NOTIFY_WINDOW | 0x0030 | 管控→设备 | 窗口信息反馈 |  输入  | 见 5.2.7 |
 | RESP_INFO | 0x8001 | 设备→管控 | 设备信息响应 |  全部  | 见 5.2.1 |
 | RESP_STATUS | 0x8002 | 设备→管控 | 设备状态响应 |  全部  | 见 5.2.2 |
 | RESP_CAPABILITY | 0x8003 | 设备→管控 | 设备能力响应 |  全部  | 见 5.2.3 |
-| RESP_WINDOW | 0x8010 | 设备→管控 | 窗口操作响应 |  输出  | 见 5.2.4 / 5.2.5 / 5.2.9 |
-| RESP_WINDOWS | 0x8011 | 设备→管控 | 窗口列表响应 |  全部  | 见 5.2.6 |
-| RESP_CHANNEL_URLS | 0x8020 | 设备→管控 | 通道URL响应 |  输入  | 见 5.2.8 |
+| RESP_WINDOW | 0x8010 | 设备→管控 | 通用成功响应 |  输出  | 见 5.2.4 / 5.2.5 / 5.2.6 / 5.2.7 / 5.2.9 |
+| RESP_WINDOWS | 0x8011 | 设备→管控 | 窗口列表响应 |  输出  | 见 5.2.8 |
+| RESP_CHANNEL_URLS | 0x8020 | 设备→管控 | 通道URL响应 |  输入  | 见 5.2.10 |
 | RESP_ERROR | 0xFFFF | 设备→管控 | 错误响应 |  全部  | TAG_RESULT_CODE(0) + TAG_ERROR_MSG |
 
 ### 5.2 接口详情
@@ -641,7 +640,7 @@ Value 字节序列（十六进制表示）：
 0C 17 E7 AA 97 E5 8F A3 E4 B8 8D E5 AD 98 E5 9C A8 3A 20 77 69 6E 2D 39 39 39  ← msg="窗口不存在: win-999"
 ```
 
-#### 5.2.9 更新窗口
+#### 5.2.6 更新窗口
 
 仅输出设备支持。直接更新窗口属性（位置/大小/通道），**无需关旧建新**。只传变更的字段，未传字段保持原值不变。
 
@@ -673,7 +672,7 @@ Value 字节序列（十六进制表示）：
 0C 17 E7 AA 97 E5 8F A3 E4 B8 8D E5 AD 98 E5 9C A8 3A 20 77 69 6E 2D 39 39 39  ← msg="窗口不存在: win-999"
 ```
 
-#### 5.2.10 窗口信息反馈
+#### 5.2.7 窗口信息反馈
 
 仅输入设备支持。管控系统在输出设备上创建/更新/关闭窗口后，找到该窗口信号源对应的输入设备，推送窗口信息，让输入设备感知其通道的占用情况。
 
@@ -728,7 +727,7 @@ Value 字节序列（十六进制表示）：
 | 更新（windowId 已存在） | 更新坐标信息 |
 | 关闭（仅 windowId + channelName） | `channelWindows[channelName].remove(windowId)` |
 
-#### 5.2.6 查询窗口列表
+#### 5.2.8 查询窗口列表
 
 **请求：** Type = `0x0011`，Value = 空（Length = 0）
 
@@ -769,7 +768,7 @@ Value 字节序列（十六进制表示）：
 
 > 若无窗口，`windowCount=0`，后面无窗口字段。
 
-#### 5.2.7 设置通道播放地址
+#### 5.2.9 设置通道播放地址
 
 为指定输入通道配置信号源 URL，供前端预览使用。**仅输入设备支持。**
 
@@ -777,13 +776,13 @@ Value 字节序列（十六进制表示）：
 
 | Tag | 字段名 | 类型 | 必填 | 说明 |
 |-----|--------|------|:--:|------|
-| 0x0D | channelName | string | 是 | 输入通道名称 |
+| 0x02 | channelName | string | 是 | 输入通道名称 |
 | 0x0E | sourceUrl | string | 否 | 信号源播放地址，空字节表示清空 |
 
 **请求示例：**
 
 ```
-0D 06 48 44 4D 49 2D 31                    ← channelName="HDMI-1"
+02 06 48 44 4D 49 2D 31                    ← channelName="HDMI-1"
 0E 1E 72 74 73 70 3A 2F 2F 31 39 32 2E 31 36 38 2E 31 2E 35 30 3A 35 35 34 2F 73 74 72 65 61 6D 31  ← sourceUrl="rtsp://192.168.1.50:554/stream1"
 ```
 
@@ -800,7 +799,7 @@ Value 字节序列（十六进制表示）：
 0C 16 E9 80 9A E9 81 93 E5 90 8D E6 97 A0 E6 95 88 3A 20 4F 55 54 2D 39 39  ← msg="通道名无效: OUT-99"
 ```
 
-#### 5.2.8 获取所有通道播放地址
+#### 5.2.10 获取所有通道播放地址
 
 返回当前设备所有通道名到播放地址的映射。**仅输入设备支持。**
 
@@ -812,16 +811,16 @@ Value 字节序列（十六进制表示）：
 |-----|--------|------|------|
 | 0x27 | code | int32 | 1=成功 |
 | (以下 K-V 对，重复出现) | | | |
-| 0x0D | channelName | string | 通道名 |
+| 0x02 | channelName | string | 通道名 |
 | 0x0E | sourceUrl | string | 对应播放地址 |
 
 **示例：**
 
 ```
 27 04 00 00 00 01                          ← code=1
-0D 06 48 44 4D 49 2D 31                    ← channelName="HDMI-1"
+02 06 48 44 4D 49 2D 31                    ← channelName="HDMI-1"
 0E 1E 72 74 73 70 3A 2F 2F 31 39 32 2E 31 36 38 2E 31 2E 35 30 3A 35 35 34 2F 73 74 72 65 61 6D 31  ← sourceUrl="rtsp://192.168.1.50:554/stream1"
-0D 06 48 44 4D 49 2D 32                    ← channelName="HDMI-2"
+02 06 48 44 4D 49 2D 32                    ← channelName="HDMI-2"
 0E 00                                      ← sourceUrl=""（空字符串）
 ```
 
@@ -989,7 +988,7 @@ public class SimulatorApplication {
         SpringApplication app = new SpringApplication(SimulatorApplication.class);
         app.setWebApplicationType(WebApplicationType.NONE);  // 不启动 Tomcat/SpringMVC
         app.setDefaultProperties(Collections.singletonMap("server.port", port));
-        app.run(args);
+        app.run();
 
         // TlvServer、DiscoveryListener、FrontendServer 通过 @Component + @PostConstruct 自动启动
     }
@@ -1313,8 +1312,11 @@ public class FrontendServer {
     @Autowired
     private DeviceConfig deviceConfig;
 
-    @Autowired
+        @Autowired
     private SimDeviceManager deviceManager;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private HttpServer httpServer;
 
@@ -1383,3 +1385,8 @@ public class FrontendServer {
 | TLV 输出设备-2 | 8093 | 9992 |
 
 > 设备端口（TCP 前端 + UDP 通信）和发现端口（UDP 广播）分离，与 REST 模拟器模式一致。端口范围 8090-8093 与 REST 模拟器（8086-8089）不重叠，发现端口 9992-9995 与 REST 模拟器（9996-9999）不重叠。
+
+
+
+
+

@@ -120,6 +120,8 @@ td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
 var API_BASE = '';
 var _capCache = null;
 var _deviceCategory = null;
+var _channelUrlsRendered = false;
+var _lastChannelKeys = '';
 
 function api(path, opts) {
   opts = opts || {};
@@ -156,7 +158,6 @@ function loadDeviceInfo() {
       it('最大分辨率', d.maxResolution);
     loadCapability();
     loadWindows();
-    loadChannelUrls();
   }).catch(function() { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; });
 }
 
@@ -178,6 +179,7 @@ function loadCapability() {
     if (res.code !== 1) return;
     _capCache = res.data;
     renderCapabilityForm(_capCache, true);
+    loadChannelUrls();
   });
 }
 
@@ -313,8 +315,23 @@ function loadChannelUrls() {
 
 function renderChannelUrls(urls) {
   var chs = getChannelList();
+  var chKeys = chs.join('|');
   if (chs.length === 0) {
     document.getElementById('channelUrlList').innerHTML = '<div class="empty-state">暂无通道</div>';
+    _channelUrlsRendered = false;
+    _lastChannelKeys = '';
+    return;
+  }
+  if (_channelUrlsRendered && chKeys === _lastChannelKeys) {
+    for (var i = 0; i < chs.length; i++) {
+      var ch = chs[i];
+      var safeId = 'cu_' + ch.replace(/[^a-zA-Z0-9_-]/g, '_');
+      var input = document.getElementById(safeId);
+      if (input && document.activeElement !== input) {
+        var newVal = urls[ch] || '';
+        if (input.value !== newVal) { input.value = newVal; }
+      }
+    }
     return;
   }
   var html = '';
@@ -329,6 +346,8 @@ function renderChannelUrls(urls) {
     html += '</div>';
   }
   document.getElementById('channelUrlList').innerHTML = html;
+  _channelUrlsRendered = true;
+  _lastChannelKeys = chKeys;
 }
 
 function saveChannelUrl(channelName) {

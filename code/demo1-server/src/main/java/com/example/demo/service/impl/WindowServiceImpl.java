@@ -221,6 +221,7 @@ public class WindowServiceImpl implements WindowService {
             DevicePageVO dev = deviceMapper.findById(cell.getDeviceId());
             if (dev == null) continue;
             if (dev.getOnline() == null || dev.getOnline() != 1) continue;
+            if (dev.getEnabled() != null && dev.getEnabled() != 1) continue;
             try {
                 deviceDriver.closeWindow(buildEndpoint(dev), windowId);
             } catch (Exception e) {
@@ -230,7 +231,8 @@ public class WindowServiceImpl implements WindowService {
 
         // 推送输入设备（信号源）的剩余窗口快照（不含被关闭窗口，缺失即视为关闭）
         DevicePageVO sourceDev = deviceMapper.findById(sw.getDeviceId());
-        if (sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1) {
+        if (sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1
+                && (sourceDev.getEnabled() == null || sourceDev.getEnabled() == 1)) {
             try {
                 deviceDriver.notifyWindow(buildEndpoint(sourceDev), buildWindowSnapshot(sw.getDeviceId(), windowId));
             } catch (Exception e) {
@@ -656,19 +658,21 @@ public class WindowServiceImpl implements WindowService {
                 if (closedDevices.contains(cov.deviceId)) continue;
                 closedDevices.add(cov.deviceId);
                 DevicePageVO dev = deviceMapper.findById(cov.deviceId);
-                if (dev != null && dev.getOnline() != null && dev.getOnline() == 1) {
+                if (dev != null && dev.getOnline() != null && dev.getOnline() == 1
+                        && (dev.getEnabled() == null || dev.getEnabled() == 1)) {
                     try { deviceDriver.closeWindow(buildEndpoint(dev), sw.getWindowId()); } catch (Exception ignored) {}
                 }
             }
         }
 
-        // Phase 2: 为每个覆盖单元创建子窗口（跳过离线设备）
+        // Phase 2: 为每个覆盖单元创建子窗口（跳过离线或禁用设备）
         for (CellCoverage cov : newCoverages) {
             DevicePageVO dev = deviceMapper.findById(cov.deviceId);
             if (dev == null) continue;
 
             boolean deviceOnline = dev.getOnline() != null && dev.getOnline() == 1;
-            if (!deviceOnline) {
+            boolean deviceEnabled = dev.getEnabled() == null || dev.getEnabled() == 1;
+            if (!deviceOnline || !deviceEnabled) {
                 anyOffline = true;
                 continue;
             }
@@ -700,16 +704,18 @@ public class WindowServiceImpl implements WindowService {
         int onlineOutputDevices = 0;
         for (CellCoverage cov : newCoverages) {
             DevicePageVO dev = deviceMapper.findById(cov.deviceId);
-            if (dev != null && dev.getOnline() != null && dev.getOnline() == 1) {
+            if (dev != null && dev.getOnline() != null && dev.getOnline() == 1
+                    && (dev.getEnabled() == null || dev.getEnabled() == 1)) {
                 onlineOutputDevices++;
             }
         }
         DevicePageVO sourceDev = deviceMapper.findById(sw.getDeviceId());
         boolean sourceOnline = sourceDev != null && sourceDev.getOnline() != null && sourceDev.getOnline() == 1;
-        int totalTargets = onlineOutputDevices + (sourceOnline ? 1 : 0);
+        boolean sourceEnabled = sourceDev == null || sourceDev.getEnabled() == null || sourceDev.getEnabled() == 1;
+        int totalTargets = onlineOutputDevices + (sourceOnline && sourceEnabled ? 1 : 0);
 
         if (sourceDev != null) {
-            if (sourceOnline) {
+            if (sourceOnline && sourceEnabled) {
                 try {
                     Result<Void> result = deviceDriver.notifyWindow(
                             buildEndpoint(sourceDev), buildWindowSnapshot(sw.getDeviceId(), null));

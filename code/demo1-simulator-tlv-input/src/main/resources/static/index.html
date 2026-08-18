@@ -45,10 +45,7 @@ td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
 
 <div class="header">
   <h1 id="headerTitle">加载中...</h1>
-  <div class="header-right">
-    <span class="refresh-indicator" id="refreshIndicator" style="display:none"></span>
-    <span class="badge" id="headerBadge">加载中...</span>
-  </div>
+  <span class="badge" id="headerBadge">加载中...</span>
 </div>
 
 <div class="container">
@@ -56,19 +53,10 @@ td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
   <div class="panel">
     <div class="panel-header">
       <h2>设备信息</h2>
-      <button class="btn btn-outline btn-sm" onclick="loadAll()">刷新</button>
+      <button class="btn btn-outline btn-sm" onclick="loadDeviceInfo()">刷新</button>
     </div>
     <div class="panel-body">
       <div class="info-grid" id="deviceInfo"><div class="empty-state">加载中...</div></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <h2>设备状态</h2>
-    </div>
-    <div class="panel-body">
-      <div class="info-grid" id="deviceStatus"><div class="empty-state">加载中...</div></div>
     </div>
   </div>
 
@@ -93,6 +81,7 @@ td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
   <div class="panel">
     <div class="panel-header">
       <h2>窗口列表（由管控系统推送）</h2>
+      <button class="btn btn-outline btn-sm" onclick="loadWindows()">刷新</button>
     </div>
     <div class="panel-body">
       <table>
@@ -120,10 +109,9 @@ td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
 
 <script>
 var API_BASE = '';
-var AUTO_REFRESH_INTERVAL = 5000;
-var _refreshTimer = null;
-var _countdown = 0;
 var _capCache = {};
+var _channelUrlsRendered = false;
+var _lastChannelKeys = '';
 
 function api(path, opts) {
   opts = opts || {};
@@ -141,29 +129,6 @@ function toast(msg, type) {
   setTimeout(function() { el.remove(); }, 3000);
 }
 
-function startAutoRefresh() {
-  _countdown = AUTO_REFRESH_INTERVAL / 1000;
-  updateRefreshIndicator();
-  _refreshTimer = setInterval(function() {
-    _countdown--;
-    if (_countdown <= 0) {
-      loadAll();
-      _countdown = AUTO_REFRESH_INTERVAL / 1000;
-    }
-    updateRefreshIndicator();
-  }, 1000);
-}
-
-function updateRefreshIndicator() {
-  document.getElementById('refreshIndicator').textContent = '自动刷新 ' + _countdown + 's';
-}
-
-function loadAll() {
-  _countdown = AUTO_REFRESH_INTERVAL / 1000;
-  updateRefreshIndicator();
-  loadDeviceInfo();
-}
-
 function loadDeviceInfo() {
   api('/simulator/device/info').then(function(res) {
     if (res.code !== 1) { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
@@ -176,10 +141,8 @@ function loadDeviceInfo() {
       it('设备类别', '输入设备（INPUT）') + it('型号', d.model) + it('序列号', d.serialNumber) +
       it('输入通道', chs.length ? chs.join(', ') : '无') +
       it('最大分辨率', d.maxResolution);
-    loadStatus();
     loadCapability();
     loadWindows();
-    loadChannelUrls();
   }).catch(function() { document.getElementById('deviceInfo').innerHTML = '<div class="empty-state">加载失败</div>'; });
 }
 
@@ -196,18 +159,6 @@ function it(label, value) {
   return '<div class="info-item"><span class="info-label">' + esc(label) + '</span><span class="info-value">' + esc(value || '-') + '</span></div>';
 }
 
-function loadStatus() {
-  api('/simulator/device/status').then(function(res) {
-    if (res.code !== 1) { document.getElementById('deviceStatus').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
-    var s = res.data;
-    var online = s.online !== false;
-    document.getElementById('deviceStatus').innerHTML =
-      '<div class="info-item"><span class="info-label">运行状态</span><span class="info-value">' +
-      '<span class="status-dot ' + (online ? 'online' : 'offline') + '"></span>' + (online ? '在线' : '离线') + '</span></div>' +
-      it('当前窗口数', s.windowCount) + it('启动时间', s.uptime);
-  }).catch(function() { document.getElementById('deviceStatus').innerHTML = '<div class="empty-state">加载失败</div>'; });
-}
-
 function loadCapability() {
   api('/simulator/device/capability').then(function(res) {
     if (res.code !== 1) { document.getElementById('capability').innerHTML = '<div class="empty-state">加载失败</div>'; return; }
@@ -217,6 +168,7 @@ function loadCapability() {
     document.getElementById('capability').innerHTML =
       it('最大分辨率', c.maxResolution) + it('通道数', c.channelCount) +
       it('输入通道', chs.length ? chs.join(', ') : '无');
+    loadChannelUrls();
   }).catch(function() { document.getElementById('capability').innerHTML = '<div class="empty-state">加载失败</div>'; });
 }
 
@@ -229,8 +181,23 @@ function loadChannelUrls() {
 
 function renderChannelUrls(urls) {
   var chs = getChannelList();
+  var chKeys = chs.join('|');
   if (chs.length === 0) {
     document.getElementById('channelUrlList').innerHTML = '<div class="empty-state">暂无通道</div>';
+    _channelUrlsRendered = false;
+    _lastChannelKeys = '';
+    return;
+  }
+  if (_channelUrlsRendered && chKeys === _lastChannelKeys) {
+    for (var i = 0; i < chs.length; i++) {
+      var ch = chs[i];
+      var safeId = 'cu_' + ch.replace(/[^a-zA-Z0-9_-]/g, '_');
+      var input = document.getElementById(safeId);
+      if (input && document.activeElement !== input) {
+        var newVal = urls[ch] || '';
+        if (input.value !== newVal) { input.value = newVal; }
+      }
+    }
     return;
   }
   var html = '';
@@ -245,6 +212,8 @@ function renderChannelUrls(urls) {
     html += '</div>';
   }
   document.getElementById('channelUrlList').innerHTML = html;
+  _channelUrlsRendered = true;
+  _lastChannelKeys = chKeys;
 }
 
 function getChannelList() {
@@ -296,8 +265,7 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-loadAll();
-startAutoRefresh();
+loadDeviceInfo();
 </script>
 
 </body>

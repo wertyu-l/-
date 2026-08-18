@@ -310,8 +310,6 @@ function showLoginView() {
   $('#loginView').style.display = 'flex';
   $('#mainView').style.display = 'none';
   $('#loginError').textContent = '';
-  $('#loginUsername').value = '';
-  $('#loginPassword').value = '';
 }
 
 function showMainView() {
@@ -1718,6 +1716,8 @@ function bindEvents() {
   $('#logoutBtn').addEventListener('click', async function () {
     try { await UserApi.logout(); } catch (_) { /* 忽略 */ }
     Auth.clearAll();
+    $('#loginUsername').value = '';
+    $('#loginPassword').value = '';
     showLoginView();
     showToast('已退出登录', 'info');
   });
@@ -2114,22 +2114,30 @@ function bindEvents() {
 }
 
 // ---------- 初始化 ----------
-function init() {
+async function init() {
   bindEvents();
 
   var token = Auth.getToken();
-  if (token) {
-    showMainView();
-    loadUserList();
-
-    // 刷新后恢复前台状态
-    var savedScreenId = sessionStorage.getItem('frontend_screen_id');
-    if (savedScreenId) {
-      switchToFrontend();
-      loadFrontendScreen(parseInt(savedScreenId, 10));
-    }
-  } else {
+  if (!token) {
     showLoginView();
+    return;
+  }
+
+  // 先验证 token 是否有效，再决定展示哪个页面
+  try {
+    await api('/user/page?page=1&pageSize=1');
+  } catch (e) {
+    return; // 401 已在 api() 中处理（清除 token、切回登录页、弹 toast）
+  }
+
+  showMainView();
+  loadUserList();
+
+  // 刷新后恢复前台状态
+  var savedScreenId = sessionStorage.getItem('frontend_screen_id');
+  if (savedScreenId) {
+    switchToFrontend();
+    loadFrontendScreen(parseInt(savedScreenId, 10));
   }
 }
 

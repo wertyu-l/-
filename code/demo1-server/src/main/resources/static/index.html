@@ -406,8 +406,8 @@
         <form id="deviceAddForm">
           <div class="form-group">
             <label for="deviceBaseUrl">设备地址 (Base URL) <span class="required">*</span></label>
-            <input type="text" id="deviceBaseUrl" placeholder="请输入设备地址" required />
-            <span class="form-hint">仅支持 IP+端口 格式</span>
+            <input type="text" id="deviceBaseUrl" placeholder="例如 http://192.168.1.100:8086 或 udp://192.168.1.100:8086" required />
+            <span class="form-hint">支持 http/https/udp + IP+端口 格式</span>
           </div>
         </form>
         <div id="deviceAddError" class="form-error"></div>

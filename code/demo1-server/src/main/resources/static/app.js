@@ -809,8 +809,8 @@ async function addDevice() {
   }
 
   // 只允许 IP+端口 格式，不允许 localhost 或域名
-  if (!/^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/.test(baseUrl)) {
-    $('#deviceAddError').textContent = '请输入有效的 IP+端口 地址，例如 http://192.168.1.100:8086';
+  if (!/^(https?|udp):\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/.test(baseUrl)) {
+    $('#deviceAddError').textContent = '请输入有效的 IP+端口 地址，例如 http://192.168.1.100:8086 或 udp://192.168.1.100:8086';
     return;
   }
 
@@ -959,7 +959,8 @@ function buildDeviceOptions(selectedId) {
     if (d.deviceCategory !== 'OUTPUT') continue;
     if (d.online !== 1 || d.enabled !== 1) continue;
     var sel = (selectedId && d.id === selectedId) ? ' selected' : '';
-    opts += '<option value="' + d.id + '"' + sel + '>' + escapeHtml(d.deviceName) + ' (' + escapeHtml(d.maxResolution) + ')</option>';
+    var typeLabel = d.deviceType || '';
+    opts += '<option value="' + d.id + '"' + sel + '>' + escapeHtml(d.deviceName) + ' [' + typeLabel + '] (' + escapeHtml(d.maxResolution) + ')</option>';
   }
   return opts;
 }

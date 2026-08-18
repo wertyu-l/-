@@ -187,7 +187,9 @@ var SignalSource = {
       try {
         var baseUrl = allDevices[j].baseUrl || '';
         if (baseUrl) {
-          var urlResult = await fetch(baseUrl + '/simulator/channel/urls');
+          // TLV 设备 discovery 回复的 baseUrl 是 udp:// 协议，浏览器 fetch 需要 http://
+          var httpBaseUrl = baseUrl.replace(/^udp:\/\//, 'http://');
+          var urlResult = await fetch(httpBaseUrl + '/simulator/channel/urls');
           var urlJson = await urlResult.json();
           if (urlJson.code === 1) {
             allDevices[j]._channelUrls = urlJson.data || {};

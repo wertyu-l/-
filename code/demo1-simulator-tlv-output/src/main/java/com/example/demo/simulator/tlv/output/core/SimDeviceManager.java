@@ -26,8 +26,12 @@ public class SimDeviceManager {
     private final DeviceConfig config;
     private final LocalDateTime startTime = LocalDateTime.now();
 
-    /** windowId → 窗口详情（不持久化） */
+    /** windowId@channelName → 窗口详情（不持久化，同一 windowId 可跨多通道） */
     private final ConcurrentHashMap<String, SimWindow> windows = new ConcurrentHashMap<>();
+
+    private static String key(String windowId, String channelName) {
+        return windowId + "@" + (channelName != null ? channelName : "");
+    }
 
     public SimDeviceManager(DeviceConfig config) {
         this.config = config;
@@ -81,15 +85,17 @@ public class SimDeviceManager {
      * 校验失败抛出 {@link IllegalArgumentException}（消息为错误描述）。
      */
     public SimWindow createWindow(String windowId, String channelName,
-                                  Integer x, Integer y, Integer width, Integer height) {
+                                  Integer x, Integer y, Integer width, Integer height,
+                                  String sourceType, String sourceUrl) {
         if (windowId == null || windowId.isEmpty()) {
             throw new IllegalArgumentException("窗口ID不能为空");
         }
         if (!isValidOutputChannel(channelName)) {
             throw new IllegalArgumentException("通道名无效: " + channelName);
         }
-        if (windows.containsKey(windowId)) {
-            throw new IllegalArgumentException("窗口已存在: " + windowId);
+        String k = key(windowId, channelName);
+        if (windows.containsKey(k)) {
+            throw new IllegalArgumentException("窗口已存在: " + windowId + " / " + channelName);
         }
         int max = getDeviceCapability().getMaxWindows();
         if (max > 0 && windows.size() >= max) {
@@ -103,10 +109,10 @@ public class SimDeviceManager {
         w.setY(y == null ? 0 : y);
         w.setWidth(width == null ? 1920 : width);
         w.setHeight(height == null ? 1080 : height);
-        w.setSourceType(inferSourceType(channelName));
-        w.setSourceUrl("");
+        w.setSourceType(sourceType != null ? sourceType : inferSourceType(channelName));
+        w.setSourceUrl(sourceUrl != null ? sourceUrl : "");
         w.setCreateTime(LocalDateTime.now().format(FMT));
-        windows.put(windowId, w);
+        windows.put(k, w);
         return w;
     }
 
@@ -117,9 +123,21 @@ public class SimDeviceManager {
      */
     public SimWindow updateWindow(String windowId, String channelName,
                                   Integer x, Integer y, Integer width, Integer height) {
-        SimWindow w = windows.get(windowId);
+        String k = key(windowId, channelName);
+        SimWindow w = windows.get(k);
         if (w == null) {
-            throw new IllegalArgumentException("窗口不存在: " + windowId);
+            // 未指定通道名时，找第一个匹配的窗口
+            if (channelName == null || channelName.isEmpty()) {
+                for (java.util.Map.Entry<String, SimWindow> e : windows.entrySet()) {
+                    if (e.getKey().startsWith(windowId + "@")) {
+                        w = e.getValue();
+                        break;
+                    }
+                }
+            }
+            if (w == null) {
+                throw new IllegalArgumentException("窗口不存在: " + windowId);
+            }
         }
         if (channelName != null && !channelName.isEmpty()) {
             if (!isValidOutputChannel(channelName)) {
@@ -132,24 +150,42 @@ public class SimDeviceManager {
         if (y != null) w.setY(y);
         if (width != null) w.setWidth(width);
         if (height != null) w.setHeight(height);
-        windows.put(windowId, w);
+        windows.put(k, w);
         return w;
     }
 
     /**
-     * 关闭窗口。窗口不存在时抛出 {@link IllegalArgumentException}。
+     * 关闭窗口（删除该 windowId 下所有通道的子窗口）。
+     * 窗口不存在时抛出 {@link IllegalArgumentException}。
      */
     public SimWindow closeWindow(String windowId) {
-        SimWindow w = windows.remove(windowId);
-        if (w == null) {
+        String prefix = windowId + "@";
+        SimWindow removed = null;
+        java.util.Iterator<java.util.Map.Entry<String, SimWindow>> it = windows.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, SimWindow> e = it.next();
+            if (e.getKey().startsWith(prefix)) {
+                if (removed == null) {
+                    removed = e.getValue();
+                }
+                it.remove();
+            }
+        }
+        if (removed == null) {
             throw new IllegalArgumentException("窗口不存在: " + windowId);
         }
-        return w;
+        return removed;
     }
 
-    /** 查询单个窗口 */
+    /** 查询单个窗口（按 windowId 查找第一个匹配） */
     public SimWindow findWindow(String windowId) {
-        return windows.get(windowId);
+        String prefix = windowId + "@";
+        for (java.util.Map.Entry<String, SimWindow> e : windows.entrySet()) {
+            if (e.getKey().startsWith(prefix)) {
+                return e.getValue();
+            }
+        }
+        return null;
     }
 
     /** 查询所有窗口 */

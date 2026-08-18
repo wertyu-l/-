@@ -179,7 +179,9 @@ public class TlvDeviceDriver implements DeviceDriver {
                 TlvFieldCodec.encodeInt32(TlvTag.TAG_X, window.getX() == null ? 0 : window.getX()),
                 TlvFieldCodec.encodeInt32(TlvTag.TAG_Y, window.getY() == null ? 0 : window.getY()),
                 TlvFieldCodec.encodeInt32(TlvTag.TAG_WIDTH, window.getWidth() == null ? 1920 : window.getWidth()),
-                TlvFieldCodec.encodeInt32(TlvTag.TAG_HEIGHT, window.getHeight() == null ? 1080 : window.getHeight())));
+                TlvFieldCodec.encodeInt32(TlvTag.TAG_HEIGHT, window.getHeight() == null ? 1080 : window.getHeight()),
+                TlvFieldCodec.encodeString(TlvTag.TAG_SOURCE_TYPE, window.getSourceType()),
+                TlvFieldCodec.encodeString(TlvTag.TAG_SOURCE_URL, window.getSourceUrl())));
         TlvFrame resp = request(endpoint, TlvCommand.CMD_CREATE_WINDOW, value);
         return toWindowResult(resp);
     }

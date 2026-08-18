@@ -312,19 +312,14 @@ function loadChannelUrls() {
 }
 
 function renderChannelUrls(urls) {
-  var keys = Object.keys(urls);
-  if (keys.length === 0) {
-    var chs = getChannelList();
-    for (var i = 0; i < chs.length; i++) { urls[chs[i]] = ''; }
-    keys = Object.keys(urls);
-  }
-  if (keys.length === 0) {
+  var chs = getChannelList();
+  if (chs.length === 0) {
     document.getElementById('channelUrlList').innerHTML = '<div class="empty-state">暂无通道</div>';
     return;
   }
   var html = '';
-  for (var i = 0; i < keys.length; i++) {
-    var ch = keys[i];
+  for (var i = 0; i < chs.length; i++) {
+    var ch = chs[i];
     var val = urls[ch] || '';
     var safeId = 'cu_' + ch.replace(/[^a-zA-Z0-9_-]/g, '_');
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';

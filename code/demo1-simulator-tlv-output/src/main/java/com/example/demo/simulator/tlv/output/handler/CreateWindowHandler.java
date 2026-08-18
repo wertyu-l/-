@@ -39,9 +39,11 @@ public class CreateWindowHandler implements TlvCommandHandler {
         Integer y = TlvFieldCodec.getInt32(fields, TlvTag.TAG_Y);
         Integer width = TlvFieldCodec.getInt32(fields, TlvTag.TAG_WIDTH);
         Integer height = TlvFieldCodec.getInt32(fields, TlvTag.TAG_HEIGHT);
+        String sourceType = TlvFieldCodec.getString(fields, TlvTag.TAG_SOURCE_TYPE);
+        String sourceUrl = TlvFieldCodec.getString(fields, TlvTag.TAG_SOURCE_URL);
 
         try {
-            SimWindow w = manager.createWindow(windowId, channelName, x, y, width, height);
+            SimWindow w = manager.createWindow(windowId, channelName, x, y, width, height, sourceType, sourceUrl);
             return TlvResponses.success(TlvCommand.RESP_WINDOW, TlvWindowCodec.encodeWindow(w));
         } catch (IllegalArgumentException e) {
             return TlvResponses.error(e.getMessage());

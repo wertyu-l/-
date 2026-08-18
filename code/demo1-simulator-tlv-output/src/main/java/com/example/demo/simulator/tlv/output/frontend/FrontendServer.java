@@ -56,6 +56,12 @@ public class FrontendServer {
     private void route(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
         try {
+            // 处理 CORS 预检请求
+            if ("OPTIONS".equals(ex.getRequestMethod())) {
+                addCorsHeaders(ex);
+                ex.sendResponseHeaders(204, -1);
+                return;
+            }
             if (!"GET".equals(ex.getRequestMethod())) {
                 writeJson(ex, 404, Result.error("不支持的方法"));
                 return;
@@ -92,6 +98,7 @@ public class FrontendServer {
                 return;
             }
             byte[] bytes = in.readAllBytes();
+            addCorsHeaders(ex);
             ex.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
             ex.sendResponseHeaders(200, bytes.length);
             ex.getResponseBody().write(bytes);
@@ -100,9 +107,16 @@ public class FrontendServer {
 
     private void writeJson(HttpExchange ex, int status, Object obj) throws IOException {
         byte[] bytes = objectMapper.writeValueAsBytes(obj);
+        addCorsHeaders(ex);
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         ex.sendResponseHeaders(status, bytes.length);
         ex.getResponseBody().write(bytes);
+    }
+
+    private void addCorsHeaders(HttpExchange ex) {
+        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
+        ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
     }
 
 }

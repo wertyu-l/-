@@ -19,30 +19,39 @@ import java.io.InputStream;
 @Component
 public class DeviceConfig {
 
-    private final SimDeviceInfo deviceInfo;
-    private final SimDeviceCapability deviceCapability;
+    private final int port;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public DeviceConfig(@Value("${port:8090}") int port) {
+        this.port = port;
+    }
+
+    private JsonNode loadRoot() {
         String file = "device-" + port + ".json";
-        ObjectMapper mapper = new ObjectMapper();
         try (InputStream in = getClass().getClassLoader().getResourceAsStream(file)) {
             if (in == null) {
                 throw new IllegalStateException("设备配置文件不存在: " + file);
             }
-            JsonNode root = mapper.readTree(in);
-            this.deviceInfo = mapper.treeToValue(root.get("deviceInfo"), SimDeviceInfo.class);
-            this.deviceCapability = mapper.treeToValue(root.get("deviceCapability"), SimDeviceCapability.class);
+            return mapper.readTree(in);
         } catch (IOException e) {
             throw new IllegalStateException("设备配置加载失败: " + file, e);
         }
     }
 
     public SimDeviceInfo getDeviceInfo() {
-        return deviceInfo;
+        try {
+            return mapper.treeToValue(loadRoot().get("deviceInfo"), SimDeviceInfo.class);
+        } catch (IOException e) {
+            throw new RuntimeException("设备信息解析失败", e);
+        }
     }
 
     public SimDeviceCapability getDeviceCapability() {
-        return deviceCapability;
+        try {
+            return mapper.treeToValue(loadRoot().get("deviceCapability"), SimDeviceCapability.class);
+        } catch (IOException e) {
+            throw new RuntimeException("设备能力解析失败", e);
+        }
     }
 
 }

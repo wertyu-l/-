@@ -12,10 +12,10 @@
     "outputChannel4": "",
     "outputChannel5": "",
     "maxResolution": "1920x1080",
-    "maxWindows": 6
+    "maxWindows": 5
   },
   "deviceCapability": {
-    "maxWindows": 6,
+    "maxWindows": 5,
     "supportMove": true,
     "supportResize": true,
     "supportOverlay": true,

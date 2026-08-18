@@ -32,6 +32,9 @@ public class ScreenServiceImpl implements ScreenService {
     @Autowired
     private DeviceMapper deviceMapper;
 
+    @Autowired
+    private WindowServiceImpl windowService;
+
     /**
      * 创建大屏
      * <p>
@@ -158,6 +161,8 @@ public class ScreenServiceImpl implements ScreenService {
         if (screen == null) {
             throw new RuntimeException("大屏不存在: id=" + id);
         }
+        // 先关闭所有窗口（通知输出/输入设备清理），再删除大屏
+        windowService.clearWindows(id);
         screenMapper.deleteScreen(id);
     }
 

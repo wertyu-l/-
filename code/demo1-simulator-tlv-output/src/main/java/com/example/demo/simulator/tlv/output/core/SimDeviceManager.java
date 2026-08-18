@@ -98,8 +98,13 @@ public class SimDeviceManager {
             throw new IllegalArgumentException("窗口已存在: " + windowId + " / " + channelName);
         }
         int max = getDeviceCapability().getMaxWindows();
-        if (max > 0 && windows.size() >= max) {
-            throw new IllegalArgumentException("窗口数量已达上限");
+        if (max > 0) {
+            long channelCount = windows.values().stream()
+                    .filter(w -> channelName.equals(w.getChannelName()))
+                    .count();
+            if (channelCount >= max) {
+                throw new IllegalArgumentException("通道 [" + channelName + "] 窗口数量已达上限（" + max + "）");
+            }
         }
 
         SimWindow w = new SimWindow();

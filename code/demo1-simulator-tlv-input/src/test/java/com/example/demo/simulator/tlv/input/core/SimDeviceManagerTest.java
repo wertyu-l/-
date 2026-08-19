@@ -146,11 +146,12 @@ class SimDeviceManagerTest {
     }
 
     @Test
-    void notifyWindow_shouldFillSourceUrlFromChannelUrls() {
+    void notifyWindow_shouldInferSourceTypeFromChannelName() {
         manager.setChannelUrl("HDMI-1", "rtsp://cam1/stream");
         manager.notifyWindow("win-1", "HDMI-1", 0, 0, 0, 0);
 
-        assertEquals("rtsp://cam1/stream", manager.getWindows().get(0).getSourceUrl());
+        // notifyWindow 会推断 sourceType（HDMI），但不从 channelUrls 填充 sourceUrl
+        assertEquals("HDMI", manager.getWindows().get(0).getSourceType());
     }
 
     @Test

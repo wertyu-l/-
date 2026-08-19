@@ -107,4 +107,186 @@ class TlvCodecTest {
         assertEquals("OUT-2", TlvFieldCodec.getString(items.get(1), TlvTag.TAG_CHANNEL_NAME));
     }
 
+    // ========== TlvFieldCodec 边界用例 ==========
+
+    @Test
+    void encodeField_nullValue_shouldTreatAsEmpty() {
+        byte[] encoded = TlvFieldCodec.encodeField(TlvTag.TAG_DEVICE_NAME, null);
+        assertEquals(2, encoded.length); // Tag + Length=0
+        assertEquals(TlvTag.TAG_DEVICE_NAME, encoded[0]);
+        assertEquals(0, encoded[1]);
+    }
+
+    @Test
+    void encodeField_valueExceeds255_shouldThrowException() {
+        byte[] large = new byte[256];
+        assertThrows(IllegalArgumentException.class, () -> TlvFieldCodec.encodeField((byte) 0x01, large));
+    }
+
+    @Test
+    void encodeFields_mapOverload_shouldWork() {
+        Map<Byte, byte[]> map = new java.util.LinkedHashMap<>();
+        map.put(TlvTag.TAG_RESULT_CODE, TlvFieldCodec.int32Bytes(1));
+        map.put(TlvTag.TAG_DEVICE_NAME, TlvFieldCodec.stringBytes("test"));
+
+        byte[] value = TlvFieldCodec.encodeFields(map);
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(value);
+
+        assertEquals(Integer.valueOf(1), TlvFieldCodec.getInt32(fields, TlvTag.TAG_RESULT_CODE));
+        assertEquals("test", TlvFieldCodec.getString(fields, TlvTag.TAG_DEVICE_NAME));
+    }
+
+    @Test
+    void decodeFields_withOffsetAndLength_shouldWork() {
+        byte[] prefix = new byte[]{0x00, 0x00};
+        byte[] body = TlvFieldCodec.encodeFields(List.of(
+                TlvFieldCodec.encodeInt32(TlvTag.TAG_RESULT_CODE, 1)));
+
+        byte[] combined = new byte[prefix.length + body.length];
+        System.arraycopy(prefix, 0, combined, 0, prefix.length);
+        System.arraycopy(body, 0, combined, prefix.length, body.length);
+
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(combined, prefix.length, body.length);
+        assertEquals(Integer.valueOf(1), TlvFieldCodec.getInt32(fields, TlvTag.TAG_RESULT_CODE));
+    }
+
+    @Test
+    void decodeFields_nullValue_shouldReturnEmpty() {
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(null);
+        assertTrue(fields.isEmpty());
+    }
+
+    @Test
+    void decodeFields_emptyValue_shouldReturnEmpty() {
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(new byte[0]);
+        assertTrue(fields.isEmpty());
+    }
+
+    @Test
+    void decodeList_nullOrEmpty_shouldReturnEmpty() {
+        assertTrue(TlvFieldCodec.decodeList(null).isEmpty());
+        assertTrue(TlvFieldCodec.decodeList(new byte[0]).isEmpty());
+    }
+
+    @Test
+    void getBool_false_shouldReturnFalse() {
+        byte[] value = TlvFieldCodec.encodeFields(List.of(
+                TlvFieldCodec.encodeBool(TlvTag.TAG_ONLINE, false)));
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(value);
+        assertEquals(Boolean.FALSE, TlvFieldCodec.getBool(fields, TlvTag.TAG_ONLINE));
+    }
+
+    @Test
+    void getBool_missingTag_shouldReturnNull() {
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(new byte[0]);
+        assertNull(TlvFieldCodec.getBool(fields, TlvTag.TAG_ONLINE));
+    }
+
+    @Test
+    void getInt32_insufficientBytes_shouldReturnNull() {
+        byte[] shortBytes = TlvFieldCodec.encodeField(TlvTag.TAG_X, new byte[]{0x01, 0x02});
+        Map<Byte, List<byte[]>> fields = TlvFieldCodec.decodeFields(shortBytes);
+        assertNull(TlvFieldCodec.getInt32(fields, TlvTag.TAG_X));
+    }
+
+    @Test
+    void encodeWindowList_shouldBeDecodableByDecodeList() {
+        com.example.demo.model.SimWindow w1 = new com.example.demo.model.SimWindow();
+        w1.setWindowId("win-001");
+        w1.setChannelName("OUT-1");
+        w1.setX(0);
+        w1.setY(0);
+        w1.setWidth(960);
+        w1.setHeight(540);
+        w1.setSourceType("HDMI");
+        w1.setSourceUrl("rtsp://cam1");
+
+        com.example.demo.model.SimWindow w2 = new com.example.demo.model.SimWindow();
+        w2.setWindowId("win-002");
+        w2.setChannelName("OUT-2");
+        w2.setX(100);
+        w2.setY(200);
+        w2.setWidth(800);
+        w2.setHeight(600);
+        w2.setSourceType("Stream");
+        w2.setSourceUrl("");
+
+        byte[] value = TlvFieldCodec.encodeWindowList(List.of(w1, w2));
+        List<Map<Byte, List<byte[]>>> items = TlvFieldCodec.decodeList(value);
+
+        assertEquals(2, items.size());
+        assertEquals("win-001", TlvFieldCodec.getString(items.get(0), TlvTag.TAG_WINDOW_ID));
+        assertEquals("OUT-1", TlvFieldCodec.getString(items.get(0), TlvTag.TAG_CHANNEL_NAME));
+        assertEquals("win-002", TlvFieldCodec.getString(items.get(1), TlvTag.TAG_WINDOW_ID));
+        assertEquals("OUT-2", TlvFieldCodec.getString(items.get(1), TlvTag.TAG_CHANNEL_NAME));
+    }
+
+    // ========== Crc16 边界用例 ==========
+
+    @Test
+    void crc16_computeWithOffset_shouldWork() {
+        byte[] data = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04};
+        short full = Crc16.compute(data);
+        short partial = Crc16.compute(data, 1, 3);
+        assertNotEquals(full, partial);
+    }
+
+    @Test
+    void crc16_verify_nullData_shouldReturnFalse() {
+        assertFalse(Crc16.verify(null));
+    }
+
+    @Test
+    void crc16_verify_dataTooShort_shouldReturnFalse() {
+        assertFalse(Crc16.verify(new byte[]{0x01}));
+    }
+
+    // ========== TlvDecoder 边界用例 ==========
+
+    @Test
+    void decoderRejectsNullData() {
+        assertThrows(IllegalArgumentException.class, () -> TlvDecoder.decode(null));
+    }
+
+    @Test
+    void decoderRejectsDataTooShort() {
+        assertThrows(IllegalArgumentException.class, () -> TlvDecoder.decode(new byte[]{0x01, 0x02, 0x03}));
+    }
+
+    @Test
+    void decoderRejectsValueLengthInsufficient() {
+        // 构造一个 length 字段声称 value 有 200 字节，但实际数据没有那么长的帧
+        byte[] encoded = TlvEncoder.encode(1, new TlvFrame(TlvCommand.CMD_GET_INFO, 0, new byte[0]));
+        // 手动修改 length 字段为 200（大端序）
+        encoded[6] = 0x00;
+        encoded[7] = (byte) 200;
+        // 重新计算 CRC
+        byte[] dataWithoutCrc = new byte[encoded.length - 2];
+        System.arraycopy(encoded, 0, dataWithoutCrc, 0, dataWithoutCrc.length);
+        short crc = Crc16.compute(dataWithoutCrc);
+        encoded[encoded.length - 2] = (byte) (crc >> 8);
+        encoded[encoded.length - 1] = (byte) crc;
+        assertThrows(IllegalArgumentException.class, () -> TlvDecoder.decode(encoded));
+    }
+
+    // ========== TlvEncoder 边界用例 ==========
+
+    @Test
+    void encode_withNullValue_shouldTreatAsEmpty() {
+        TlvFrame frame = new TlvFrame(TlvCommand.CMD_GET_INFO, 0, null);
+        byte[] encoded = TlvEncoder.encode(1, frame);
+        assertNotNull(encoded);
+        assertEquals(10, encoded.length); // 8 header + 2 crc = 10
+        assertTrue(Crc16.verify(encoded));
+    }
+
+    @Test
+    void encode_withLargeValue_shouldWork() {
+        byte[] large = new byte[200];
+        TlvFrame frame = new TlvFrame(TlvCommand.CMD_GET_INFO, 200, large);
+        byte[] encoded = TlvEncoder.encode(1, frame);
+        assertEquals(8 + 200 + 2, encoded.length);
+        assertTrue(Crc16.verify(encoded));
+    }
+
 }

@@ -96,19 +96,19 @@ class SimDeviceManagerTest {
     }
 
     /**
-     * notify 时为空 sourceType/sourceUrl 的窗口应根据通道补全
+     * notify 时为空 sourceType 的窗口应根据通道名推断信号源类型
+     * <p>sourceUrl 由用户通过 setChannelUrl 单独配置，notify 不会自动填充
      */
     @Test
-    void notifyWindows_shouldFillSourceTypeAndUrl() {
+    void notifyWindows_shouldFillSourceTypeFromChannelName() {
         SimWindow w = new SimWindow();
         w.setWindowId("win-001");
         w.setChannelName("HDMI-1");
-        when(repo.getChannelUrl("HDMI-1")).thenReturn("rtsp://camera1/stream");
 
         manager.notifyWindows(List.of(w));
 
         assertEquals("HDMI", w.getSourceType());
-        assertEquals("rtsp://camera1/stream", w.getSourceUrl());
+        assertNull(w.getSourceUrl());
     }
 
     // ========== 设备状态查询 ==========

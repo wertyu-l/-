@@ -113,9 +113,6 @@ public class SimDeviceManager {
         if (w.getSourceType() == null || w.getSourceType().isEmpty()) {
             w.setSourceType(inferSourceType(channelName));
         }
-        if (w.getSourceUrl() == null || w.getSourceUrl().isEmpty()) {
-            w.setSourceUrl(channelUrls.getOrDefault(channelName, ""));
-        }
         if (w.getCreateTime() == null) {
             w.setCreateTime(LocalDateTime.now().format(FMT));
         }
@@ -138,8 +135,15 @@ public class SimDeviceManager {
         channelWindows.clear();
         if (newWindows != null) {
             for (SimWindow w : newWindows) {
-                notifyWindow(w.getWindowId(), w.getChannelName(),
-                        w.getX(), w.getY(), w.getWidth(), w.getHeight());
+                if (w.getSourceType() == null || w.getSourceType().isEmpty()) {
+                    w.setSourceType(inferSourceType(w.getChannelName()));
+                }
+                if (w.getCreateTime() == null) {
+                    w.setCreateTime(LocalDateTime.now().format(FMT));
+                }
+                windows.put(w.getWindowId(), w);
+                channelWindows.computeIfAbsent(w.getChannelName(),
+                        k -> ConcurrentHashMap.newKeySet()).add(w.getWindowId());
             }
         }
     }

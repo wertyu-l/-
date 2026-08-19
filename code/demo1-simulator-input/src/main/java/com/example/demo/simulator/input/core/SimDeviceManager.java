@@ -130,10 +130,6 @@ public class SimDeviceManager {
     public void notifyWindows(List<SimWindow> windows) {
         List<SimWindow> snapshot = windows != null ? windows : List.of();
         for (SimWindow w : snapshot) {
-            if (w.getSourceUrl() == null || w.getSourceUrl().isEmpty()) {
-                String channelUrl = repo.getChannelUrl(w.getChannelName());
-                w.setSourceUrl(channelUrl != null ? channelUrl : "");
-            }
             if (w.getSourceType() == null || w.getSourceType().isEmpty()) {
                 w.setSourceType(inferSourceType(w.getChannelName()));
             }

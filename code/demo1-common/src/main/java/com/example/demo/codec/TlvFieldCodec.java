@@ -173,6 +173,8 @@ public class TlvFieldCodec {
             allEntries.add(encodeInt32(TlvTag.TAG_Y, w.getY() == null ? 0 : w.getY()));
             allEntries.add(encodeInt32(TlvTag.TAG_WIDTH, w.getWidth() == null ? 1920 : w.getWidth()));
             allEntries.add(encodeInt32(TlvTag.TAG_HEIGHT, w.getHeight() == null ? 1080 : w.getHeight()));
+            allEntries.add(encodeString(TlvTag.TAG_SOURCE_TYPE, w.getSourceType()));
+            allEntries.add(encodeString(TlvTag.TAG_SOURCE_URL, w.getSourceUrl()));
         }
         return encodeFields(allEntries);
     }

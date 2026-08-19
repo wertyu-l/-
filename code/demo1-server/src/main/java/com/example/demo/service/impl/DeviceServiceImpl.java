@@ -200,13 +200,17 @@ public class DeviceServiceImpl implements DeviceService {
      */
     @Override
     public void updateOnlineStatus() {
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] ========== heartbeat START ==========");
         List<DevicePageVO> allDevices = deviceMapper.findAll();
         if (allDevices == null || allDevices.isEmpty()) {
+            System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: no devices found");
             return;
         }
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: checking " + allDevices.size() + " devices");
 
         LocalDateTime now = LocalDateTime.now();
         for (DevicePageVO device : allDevices) {
+            System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: checking device id=" + device.getId() + " name=" + device.getDeviceName() + " type=" + device.getDeviceType() + " online=" + device.getOnline());
             DeviceEndpoint endpoint = buildEndpoint(device);
             try {
                 SimDeviceStatus status = deviceDriver.getStatus(endpoint);
@@ -215,21 +219,23 @@ public class DeviceServiceImpl implements DeviceService {
                         windowService.markPendingForDevice(device);
                     }
                     deviceMapper.updateOnline(device.getId(), 1, now);
+                    System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: device id=" + device.getId() + " -> ONLINE");
                 } else {
-                    // 在线 → 离线：标记窗口为 failed + 降级
                     if (device.getOnline() != null && device.getOnline() == 1) {
                         windowService.markFailedForDevice(device);
                     }
                     deviceMapper.updateOnline(device.getId(), 0, now);
+                    System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: device id=" + device.getId() + " -> OFFLINE (status returned offline)");
                 }
             } catch (Exception e) {
-                // 在线 → 离线（连接异常）：标记窗口为 failed + 降级
                 if (device.getOnline() != null && device.getOnline() == 1) {
                     windowService.markFailedForDevice(device);
                 }
                 deviceMapper.updateOnline(device.getId(), 0, now);
+                System.out.println("[DEBUG " + java.time.LocalTime.now() + "] heartbeat: device id=" + device.getId() + " -> OFFLINE (exception: " + e.getMessage() + ")");
             }
         }
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] ========== heartbeat END ==========");
     }
 
     /**

@@ -13,12 +13,14 @@ import com.example.demo.service.WindowService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -45,6 +47,8 @@ public class WindowServiceImpl implements WindowService {
     @Autowired
     private DeviceDriver deviceDriver;
 
+    private final Set<Long> tlvCheckingDevices = ConcurrentHashMap.newKeySet();
+
     /**
      * 创建窗口
      * <p>
@@ -56,7 +60,6 @@ public class WindowServiceImpl implements WindowService {
      * @return 创建后的窗口 VO
      */
     @Override
-    @Transactional
     public ScreenWindowVO createWindow(Long screenId, WindowCreateRequest request) {
         if (!StringUtils.hasText(request.getWindowId())) {
             throw new RuntimeException("窗口ID不能为空");
@@ -127,7 +130,6 @@ public class WindowServiceImpl implements WindowService {
      * @return 更新后的窗口 VO
      */
     @Override
-    @Transactional
     public ScreenWindowVO updateWindow(Long screenId, String windowId, WindowUpdateRequest request) {
         ScreenWindow sw = windowMapper.findByWindowId(windowId);
         if (sw == null || !sw.getScreenId().equals(screenId)) {
@@ -186,7 +188,12 @@ public class WindowServiceImpl implements WindowService {
         syncToCoveredDevices(sw, screen, oldCoverages);
 
         DevicePageVO device = deviceMapper.findById(sw.getDeviceId());
-        return toVO(windowMapper.findByWindowId(windowId), device);
+        ScreenWindow dbSw = windowMapper.findByWindowId(windowId);
+        dbSw.setX(newX);
+        dbSw.setY(newY);
+        dbSw.setWidth(newW);
+        dbSw.setHeight(newH);
+        return toVO(dbSw, device);
     }
 
     /**
@@ -199,7 +206,6 @@ public class WindowServiceImpl implements WindowService {
      * @param windowId 窗口唯一标识
      */
     @Override
-    @Transactional
     public void closeWindow(Long screenId, String windowId) {
         ScreenWindow sw = windowMapper.findByWindowId(windowId);
         if (sw == null || !sw.getScreenId().equals(screenId)) {
@@ -208,8 +214,6 @@ public class WindowServiceImpl implements WindowService {
 
         // 先标记为 closing，防止 retryPendingWindows 定时任务在清理期间重新创建窗口
         windowMapper.updateSyncStatus(windowId, "closing");
-
-        boolean allClosed = true;
 
         // 关闭窗口在所有已绑定输出设备上的残留（遍历所有单元，按 deviceId 去重，跳过离线设备）
         java.util.Set<Long> closedDeviceIds = new java.util.HashSet<>();
@@ -222,10 +226,14 @@ public class WindowServiceImpl implements WindowService {
             if (dev == null) continue;
             if (dev.getOnline() == null || dev.getOnline() != 1) continue;
             if (dev.getEnabled() != null && dev.getEnabled() != 1) continue;
-            try {
-                deviceDriver.closeWindow(buildEndpoint(dev), windowId);
-            } catch (Exception e) {
-                allClosed = false;
+            if (tlvCheckingDevices.add(dev.getId())) {
+                try {
+                    deviceDriver.closeWindow(buildEndpoint(dev), windowId);
+                } catch (Exception e) {
+                    deviceMapper.updateOnline(dev.getId(), 0, LocalDateTime.now());
+                } finally {
+                    tlvCheckingDevices.remove(dev.getId());
+                }
             }
         }
 
@@ -235,8 +243,7 @@ public class WindowServiceImpl implements WindowService {
                 && (sourceDev.getEnabled() == null || sourceDev.getEnabled() == 1)) {
             try {
                 deviceDriver.notifyWindow(buildEndpoint(sourceDev), buildWindowSnapshot(sw.getDeviceId(), windowId));
-            } catch (Exception e) {
-                allClosed = false;
+            } catch (Exception ignored) {
             }
         }
 
@@ -262,7 +269,6 @@ public class WindowServiceImpl implements WindowService {
      * @param screenId 大屏 ID
      */
     @Override
-    @Transactional
     public void clearWindows(Long screenId) {
         List<ScreenWindowVO> windows = windowMapper.findByScreenId(screenId);
         for (ScreenWindowVO w : windows) {
@@ -651,6 +657,8 @@ public class WindowServiceImpl implements WindowService {
         boolean anyOffline = false;
         int successCount = 0;
 
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] syncToCoveredDevices: windowId=" + sw.getWindowId() + " isUpdate=" + isUpdate + " newCoverages=" + newCoverages.size());
+
         // Phase 1: 更新时先关闭旧位置覆盖的设备上的子窗口（只关旧覆盖的设备，不关整个大屏所有设备）
         if (isUpdate) {
             java.util.Set<Long> closedDevices = new java.util.HashSet<>();
@@ -660,7 +668,15 @@ public class WindowServiceImpl implements WindowService {
                 DevicePageVO dev = deviceMapper.findById(cov.deviceId);
                 if (dev != null && dev.getOnline() != null && dev.getOnline() == 1
                         && (dev.getEnabled() == null || dev.getEnabled() == 1)) {
-                    try { deviceDriver.closeWindow(buildEndpoint(dev), sw.getWindowId()); } catch (Exception ignored) {}
+                    if (tlvCheckingDevices.add(dev.getId())) {
+                        try {
+                            deviceDriver.closeWindow(buildEndpoint(dev), sw.getWindowId());
+                        } catch (Exception ignored) {
+                            deviceMapper.updateOnline(dev.getId(), 0, LocalDateTime.now());
+                        } finally {
+                            tlvCheckingDevices.remove(dev.getId());
+                        }
+                    }
                 }
             }
         }
@@ -674,10 +690,15 @@ public class WindowServiceImpl implements WindowService {
             boolean deviceEnabled = dev.getEnabled() == null || dev.getEnabled() == 1;
             if (!deviceOnline || !deviceEnabled) {
                 anyOffline = true;
+                System.out.println("[DEBUG " + java.time.LocalTime.now() + "] syncToCoveredDevices: SKIP deviceId=" + cov.deviceId + " online=" + dev.getOnline() + " enabled=" + dev.getEnabled());
                 continue;
             }
 
             try {
+                if (tlvCheckingDevices.contains(dev.getId())) {
+                    anyOffline = true;
+                    continue;
+                }
                 DeviceEndpoint endpoint = buildEndpoint(dev);
 
                 SimWindow simWindow = new SimWindow();
@@ -696,6 +717,7 @@ public class WindowServiceImpl implements WindowService {
                 }
             } catch (Exception ignored) {
                 anyOffline = true;
+                deviceMapper.updateOnline(dev.getId(), 0, LocalDateTime.now());
             }
         }
 
@@ -734,8 +756,10 @@ public class WindowServiceImpl implements WindowService {
         // 关键：即使所有在线设备都同步成功，只要有离线设备未推送，就必须保持 degraded=1
         if (!anyOffline && totalTargets > 0 && successCount == totalTargets) {
             windowMapper.updateDegraded(sw.getWindowId(), "synced", 0);
+            System.out.println("[DEBUG " + java.time.LocalTime.now() + "] syncToCoveredDevices: windowId=" + sw.getWindowId() + " -> synced");
         } else {
             windowMapper.updateDegraded(sw.getWindowId(), "pending", 1);
+            System.out.println("[DEBUG " + java.time.LocalTime.now() + "] syncToCoveredDevices: windowId=" + sw.getWindowId() + " -> pending (anyOffline=" + anyOffline + " totalTargets=" + totalTargets + " successCount=" + successCount + ")");
         }
     }
 
@@ -748,9 +772,10 @@ public class WindowServiceImpl implements WindowService {
      */
     @Scheduled(fixedDelay = 30_000)
     public void retryPendingWindows() {
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] ========== retryPendingWindows START ==========");
         List<ScreenWindow> pending = windowMapper.findBySyncStatus(List.of("pending", "failed"));
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] retryPendingWindows: found " + pending.size() + " pending/failed windows");
         for (ScreenWindow w : pending) {
-            // 双重检查：窗口可能已被 closeWindow 删除或标记为 closing
             ScreenWindow current = windowMapper.findByWindowId(w.getWindowId());
             if (current == null) continue;
             if (!("pending".equals(current.getSyncStatus()) || "failed".equals(current.getSyncStatus()))) continue;
@@ -758,9 +783,10 @@ public class WindowServiceImpl implements WindowService {
             Screen screen = screenMapper.findById(w.getScreenId());
             if (screen == null) continue;
 
-            // 重试：先关闭旧子窗口再重建（使用当前位置作为 oldCoverages 以触发 Phase 1 清理）
+            System.out.println("[DEBUG " + java.time.LocalTime.now() + "] retryPendingWindows: retrying windowId=" + w.getWindowId() + " status=" + current.getSyncStatus());
             syncToCoveredDevices(current, screen, calcCoverages(current, screen));
         }
+        System.out.println("[DEBUG " + java.time.LocalTime.now() + "] ========== retryPendingWindows END ==========");
     }
 
     // ==================== 设备恢复后窗口重同步 ====================
@@ -895,6 +921,7 @@ public class WindowServiceImpl implements WindowService {
             simWindow.setY(w.getY());
             simWindow.setWidth(w.getWidth());
             simWindow.setHeight(w.getHeight());
+            simWindow.setSourceType(w.getSourceType());
             simWindow.setSourceUrl(w.getSourceUrl());
             if (w.getCreateTime() != null) {
                 simWindow.setCreateTime(w.getCreateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));

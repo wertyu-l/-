@@ -60,6 +60,8 @@ public class NotifyWindowHandler implements TlvCommandHandler {
             w.setY(y == null ? 0 : y);
             w.setWidth(width == null ? 1920 : width);
             w.setHeight(height == null ? 1080 : height);
+            w.setSourceType(TlvFieldCodec.getString(fields, TlvTag.TAG_SOURCE_TYPE));
+            w.setSourceUrl(TlvFieldCodec.getString(fields, TlvTag.TAG_SOURCE_URL));
             windows.add(w);
         }
 

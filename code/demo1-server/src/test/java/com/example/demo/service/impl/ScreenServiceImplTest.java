@@ -36,6 +36,9 @@ class ScreenServiceImplTest {
     @Mock
     private DeviceMapper deviceMapper;
 
+    @Mock
+    private WindowServiceImpl windowService;
+
     @InjectMocks
     private ScreenServiceImpl screenService;
 
